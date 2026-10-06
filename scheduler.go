@@ -64,9 +64,9 @@ func notifyExpiredPremiums(now int64) {
 	for _, u := range expirePremiums(now) {
 		l := getUser(u.ID).L()
 		go func() {
-			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), sendTimeout)
 			defer cancel()
-			sendTo(ctx, u.ChatID, tr(l, "premium.expired"), simpleScreen("", menuRow(l)).markup())
+			sendQuiet(ctx, u.ChatID, tr(l, "premium.expired"), simpleScreen("", menuRow(l)).markup())
 		}()
 	}
 }

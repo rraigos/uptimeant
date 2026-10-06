@@ -8,7 +8,6 @@ import (
 	"encoding/hex"
 	"strconv"
 	"strings"
-	"time"
 )
 
 // An invite link needs no code stored in the DB: ref_<id>_<sig>, where sig is a truncated
@@ -71,8 +70,8 @@ func notifyReferral(invitee int64) {
 	invited, _ := referralStats(referrer)
 	l := u.L()
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), sendTimeout)
 		defer cancel()
-		sendTo(ctx, u.ChatID, tr(l, "inv.reward", days, invited), simpleScreen("", menuRow(l)).markup())
+		sendQuiet(ctx, u.ChatID, tr(l, "inv.reward", days, invited), simpleScreen("", menuRow(l)).markup())
 	}()
 }

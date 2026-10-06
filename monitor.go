@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"strconv"
@@ -18,13 +19,50 @@ var noPreview = &models.LinkPreviewOptions{IsDisabled: boolPtr(true)}
 
 func boolPtr(b bool) *bool { return &b }
 
-func sendTo(ctx context.Context, chatID int64, text string, markup models.ReplyMarkup) {
+func msgParams(chatID int64, text string, markup models.ReplyMarkup) *bot.SendMessageParams {
 	p := &bot.SendMessageParams{ChatID: chatID, Text: text, ParseMode: models.ParseModeHTML, LinkPreviewOptions: noPreview}
 	if markup != nil {
 		p.ReplyMarkup = markup
 	}
-	if _, err := tg.SendMessage(ctx, p); err != nil {
+	return p
+}
+
+// sendTo posts once and gives up: it also runs inside the webhook handler, and Telegram
+// re-delivers an update whose response has not arrived yet.
+func sendTo(ctx context.Context, chatID int64, text string, markup models.ReplyMarkup) {
+	if _, err := tg.SendMessage(ctx, msgParams(chatID, text, markup)); err != nil {
 		log.Printf("send to %d failed: %v", chatID, err)
+	}
+}
+
+// sendQuiet waits out a rate limit instead of losing the message. Alerts fire once per
+// state change, so a dropped one is never repeated; only background sends may block here.
+func sendQuiet(ctx context.Context, chatID int64, text string, markup models.ReplyMarkup) {
+	p := msgParams(chatID, text, markup)
+	for attempt := 0; ; attempt++ {
+		_, err := tg.SendMessage(ctx, p)
+		if err == nil {
+			return
+		}
+		var limited *bot.TooManyRequestsError
+		if !errors.As(err, &limited) || attempt >= sendRetries {
+			log.Printf("send to %d failed: %v", chatID, err)
+			return
+		}
+		secs := limited.RetryAfter
+		if secs < 1 {
+			secs = 1
+		}
+		if secs > sendRetryCapSec {
+			secs = sendRetryCapSec
+		}
+		log.Printf("send to %d limited, retry %d in %ds", chatID, attempt+1, secs)
+		select {
+		case <-ctx.Done():
+			log.Printf("send to %d abandoned: %v", chatID, ctx.Err())
+			return
+		case <-time.After(time.Duration(secs) * time.Second):
+		}
 	}
 }
 
@@ -44,14 +82,14 @@ func sendAlert(userID, monitorID int64, build func(Lang) string) {
 			}
 		}
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), sendTimeout)
 	defer cancel()
 	for id := range chats {
 		var markup models.ReplyMarkup
 		if id == u.ChatID && monitorID > 0 {
 			markup = simpleScreen("", line(ib(l, "btn.open", fmt.Sprintf("p:%d", monitorID)))).markup()
 		}
-		sendTo(ctx, id, text, markup)
+		sendQuiet(ctx, id, text, markup)
 	}
 }
 

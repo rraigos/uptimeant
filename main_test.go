@@ -27,8 +27,26 @@ type sentMsg struct {
 }
 
 type fakeTG struct {
-	mu   sync.Mutex
-	sent []sentMsg
+	mu    sync.Mutex
+	sent  []sentMsg
+	limit int // upcoming sends answered with a 429
+}
+
+// throttle makes the next n sends hit the Telegram rate limit.
+func (f *fakeTG) throttle(n int) {
+	f.mu.Lock()
+	f.limit = n
+	f.mu.Unlock()
+}
+
+func (f *fakeTG) takeThrottle() bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.limit <= 0 {
+		return false
+	}
+	f.limit--
+	return true
 }
 
 func (f *fakeTG) texts() []string {
@@ -89,6 +107,11 @@ func setup(t *testing.T) *fakeTG {
 		w.Header().Set("Content-Type", "application/json")
 		switch method {
 		case "sendMessage", "editMessageText":
+			if f.takeThrottle() {
+				w.Header().Set("Retry-After", "1")
+				io.WriteString(w, `{"ok":false,"error_code":429,"description":"Too Many Requests","parameters":{"retry_after":1}}`)
+				return
+			}
 			_ = r.ParseMultipartForm(1 << 20) // the library sends parameters as multipart/form-data
 			chat, _ := strconv.ParseInt(r.FormValue("chat_id"), 10, 64)
 			f.mu.Lock()
@@ -748,6 +771,26 @@ func TestAlertsUseOwnerLanguage(t *testing.T) {
 	press(2, "hist:"+strconv.FormatInt(q.ID, 10))
 	f.waitFor(t, "Verlauf")
 	f.waitFor(t, "Keine Antwort innerhalb von 10 s")
+}
+
+func TestAlertWaitsOutRateLimit(t *testing.T) {
+	f := setup(t)
+	upsertUser(1, "")
+	p := mustMonitor(t, 1, typeHTTP, "Shop", "http://93.184.216.34", 10, Meta{})
+	build := func(Lang) string { return "🔴 rate limited alert" }
+
+	f.throttle(sendRetries)
+	sendAlert(p.UserID, p.ID, build)
+	if got := f.count("rate limited alert"); got != 1 {
+		t.Fatalf("expected the alert after %d limits, got %d sends: %q", sendRetries, got, f.texts())
+	}
+
+	f.reset()
+	f.throttle(sendRetries + 5)
+	sendAlert(p.UserID, p.ID, build)
+	if got := f.count("rate limited alert"); got != 0 {
+		t.Fatalf("a sustained limit must stop after %d retries, got %d", sendRetries, got)
+	}
 }
 
 func TestPremiumPayment(t *testing.T) {

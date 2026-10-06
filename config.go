@@ -32,6 +32,11 @@ const (
 	tickInterval   = 30 * time.Second
 	concurrency    = 10
 
+	// Only sends that run outside a webhook update may wait out a Telegram 429.
+	sendRetries     = 3
+	sendRetryCapSec = 20
+	sendTimeout     = 60 * time.Second
+
 	freeHistoryRows = 10
 	historyDays     = 30
 	// Raw check rows are kept only while the 24-hour bar and the recent list need them;

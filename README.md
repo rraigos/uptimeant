@@ -161,5 +161,8 @@ keep working.
 - **History:** raw check rows are kept for 3 days, which covers the 24-hour bar and the recent list;
   the 30-day Premium report reads `daily_stats`, one rolled-up row per monitor per day. Both are
   written by the same insert, and `daily_stats` is refilled from raw rows at startup.
+- **Delivery:** alerts, referral and Premium notices are sent from the background, so they wait out
+  a Telegram `429` and retry up to 3 times. Replies inside a webhook update never block — Telegram
+  re-delivers an update whose response is late.
 - **Tests:** `go test ./...` runs the bot against a stub Telegram API, no network needed.
 - `TELEGRAM_API_URL` (optional) points at a local Bot API server or a stub, used by the tests.
