@@ -1,0 +1,8 @@
+.env
+*.db
+*.db-shm
+*.db-wal
+/pulsecheck
+/pulsecheck.exe
+/agent-dist/pulsecheck-agent-*
+/notes/
