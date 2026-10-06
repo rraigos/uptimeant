@@ -30,7 +30,7 @@ const (
 	retryMinutes   = 1
 	heartbeatGrace = 1.5
 	tickInterval   = 30 * time.Second
-	concurrency    = 10
+	concurrency    = 24
 
 	// Only sends that run outside a webhook update may wait out a Telegram 429.
 	sendRetries     = 3
