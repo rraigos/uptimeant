@@ -158,6 +158,8 @@ keep working.
 
 - **Database:** `monitors.type` holds `http`, `heartbeat`, `ssl` and `agent`; extra fields are JSON
   in `monitors.meta`.
-- **History:** check rows are kept for 30 days and pruned hourly.
+- **History:** raw check rows are kept for 3 days, which covers the 24-hour bar and the recent list;
+  the 30-day Premium report reads `daily_stats`, one rolled-up row per monitor per day. Both are
+  written by the same insert, and `daily_stats` is refilled from raw rows at startup.
 - **Tests:** `go test ./...` runs the bot against a stub Telegram API, no network needed.
 - `TELEGRAM_API_URL` (optional) points at a local Bot API server or a stub, used by the tests.

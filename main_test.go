@@ -871,6 +871,56 @@ func TestHTTPCheck(t *testing.T) {
 	}
 }
 
+func TestDailyStatsRollup(t *testing.T) {
+	setup(t)
+	p := mustMonitor(t, 1, typeHTTP, "Site", "http://93.184.216.34", 10, Meta{})
+
+	addCheck(p.ID, nowMs(), true, det("d.http_ok", 12))
+	addCheck(p.ID, nowMs(), false, det("d.http_status", 503))
+	today := checkDay(nowMs())
+	var n, ok int
+	if err := db.QueryRow(`SELECT n, ok FROM daily_stats WHERE monitor_id = ? AND day = ?`, p.ID, today).Scan(&n, &ok); err != nil {
+		t.Fatal(err)
+	}
+	if n != 2 || ok != 1 {
+		t.Fatalf("day counter = %d checks / %d ok, expected 2 / 1", n, ok)
+	}
+
+	addCheck(p.ID, nowMs()-int64(rawHistoryDays+20)*86400000, true, det("d.http_ok", 12))
+
+	// Checks written before the counter table existed are rolled up from the raw rows.
+	if _, err := db.Exec(`DELETE FROM daily_stats`); err != nil {
+		t.Fatal(err)
+	}
+	if err := rollupChecks(); err != nil {
+		t.Fatal(err)
+	}
+	rolled := dailyChecks(p.ID, nowMs()-int64(historyDays)*86400000, tzOffsetMs())
+	if len(rolled) != 2 || rolled[1].N != 2 || rolled[1].OK != 1 {
+		t.Fatalf("rollup from raw checks: %+v", rolled)
+	}
+
+	// Pruning the raw window keeps the long report, and today's bar still reads raw rows.
+	pruneChecks(nowMs() - int64(rawHistoryDays)*86400000)
+	if days := dailyChecks(p.ID, nowMs()-int64(historyDays)*86400000, tzOffsetMs()); len(days) != 2 {
+		t.Fatalf("stats must survive the raw prune: %+v", days)
+	}
+	if raw, _ := uptimeSince(p.ID, nowMs()-86400000); raw != 2 {
+		t.Fatalf("raw window must keep today's checks, got %d", raw)
+	}
+
+	if !deleteMonitor(p.ID, 1) {
+		t.Fatal("monitor not deleted")
+	}
+	var left int
+	if err := db.QueryRow(`SELECT count(*) FROM daily_stats`).Scan(&left); err != nil {
+		t.Fatal(err)
+	}
+	if left != 0 {
+		t.Fatalf("counters left after the monitor was deleted: %d", left)
+	}
+}
+
 func TestHTTPFailureThreshold(t *testing.T) {
 	f := setup(t)
 	p := mustMonitor(t, 1, typeHTTP, "Site", "http://93.184.216.34", 10, Meta{})

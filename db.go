@@ -51,6 +51,13 @@ CREATE TABLE IF NOT EXISTS checks (
   detail TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_checks_monitor_at ON checks(monitor_id, at);
+CREATE TABLE IF NOT EXISTS daily_stats (
+  monitor_id INTEGER NOT NULL REFERENCES monitors(id) ON DELETE CASCADE,
+  day INTEGER NOT NULL,
+  n INTEGER NOT NULL DEFAULT 0,
+  ok INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (monitor_id, day)
+);
 CREATE TABLE IF NOT EXISTS payments (
   charge_id TEXT PRIMARY KEY,
   user_id INTEGER NOT NULL,
@@ -147,7 +154,22 @@ func openDB(path string) error {
 			return aerr
 		}
 	}
+	// Roll raw checks up into daily_stats: days missing there are still present in the raw table,
+	// existing days already carry their counters.
+	if err = rollupChecks(); err != nil {
+		return err
+	}
 	return nil
+}
+
+// rollupChecks fills the per-day counters from raw checks. Days that already have a row are left
+// alone, so calling it on every start is cheap and idempotent.
+func rollupChecks() error {
+	_, err := db.Exec(`INSERT OR IGNORE INTO daily_stats (monitor_id, day, n, ok)
+		SELECT monitor_id, day, COUNT(*), SUM(ok) FROM (
+		  SELECT monitor_id, CAST((at + ?) / 86400000 AS INTEGER) AS day, ok FROM checks
+		) GROUP BY monitor_id, day`, tzOffsetMs())
+	return err
 }
 
 const selMonitor = `SELECT p.id, p.user_id, p.type, p.name, p.target, p.interval_minutes, p.status,
@@ -313,7 +335,13 @@ func addCheck(monitorID, at int64, ok bool, detail string) {
 	}
 	_, err := db.Exec(`INSERT INTO checks (monitor_id, at, ok, detail) VALUES (?, ?, ?, ?)`, monitorID, at, okInt, detail)
 	logErr("add check", err)
+	_, err = db.Exec(`INSERT INTO daily_stats (monitor_id, day, n, ok) VALUES (?, ?, 1, ?)
+		ON CONFLICT (monitor_id, day) DO UPDATE SET n = n + 1, ok = ok + excluded.ok`, monitorID, checkDay(at), okInt)
+	logErr("add daily stat", err)
 }
+
+// checkDay is the local calendar day of a timestamp; the same offset is used when reading the stats back.
+func checkDay(at int64) int64 { return (at + tzOffsetMs()) / 86400000 }
 
 type Check struct {
 	At     int64
@@ -347,8 +375,8 @@ type DayStat struct {
 }
 
 func dailyChecks(monitorID, since, offsetMs int64) []DayStat {
-	rows, err := db.Query(`SELECT CAST((at + ?) / 86400000 AS INTEGER) AS day, COUNT(*), SUM(ok)
-		FROM checks WHERE monitor_id = ? AND at >= ? GROUP BY day ORDER BY day`, offsetMs, monitorID, since)
+	rows, err := db.Query(`SELECT day, n, ok FROM daily_stats WHERE monitor_id = ? AND day >= ? ORDER BY day`,
+		monitorID, (since+offsetMs)/86400000)
 	if err != nil {
 		logErr("daily checks", err)
 		return nil

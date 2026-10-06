@@ -34,6 +34,9 @@ const (
 
 	freeHistoryRows = 10
 	historyDays     = 30
+	// Raw check rows are kept only while the 24-hour bar and the recent list need them;
+	// the longer Premium window lives in daily_stats, one row per monitor per day.
+	rawHistoryDays = 3
 
 	sslCheckEvery  = 24 * time.Hour
 	sslRetryEvery  = time.Hour

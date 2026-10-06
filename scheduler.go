@@ -56,7 +56,7 @@ func tick() {
 	checkDueSSL(now)
 	if now-lastPrune > 3600000 {
 		lastPrune = now
-		pruneChecks(now - int64(historyDays)*86400000)
+		pruneChecks(now - int64(rawHistoryDays)*86400000)
 	}
 }
 
