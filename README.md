@@ -1,6 +1,6 @@
 # UptimeAnt
 
-<img src="brand/uptimeant-icon.svg" alt="UptimeAnt" width="72" height="72">
+<img src="brand/uptimeant-avatar.png" alt="UptimeAnt" width="72" height="72">
 
 Uptime monitoring that lives inside Telegram: HTTP checks, heartbeat URLs for cron jobs, SSL
 certificate expiry and VPS metrics, all reported into one chat. No dashboard, no email reports,
