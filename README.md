@@ -15,7 +15,7 @@ around 15 MB of RAM at rest.
 
 | Type | Command | Behaviour |
 | --- | --- | --- |
-| Website | `/add_http <name> <url>` | GET every 10 minutes (Premium: every minute). Only `200` counts as up; redirects are treated as failures and private-network targets are refused. Alerts after two consecutive failures, with a confirmation re-check one minute after the first one. |
+| Website | `/add_http <name> <url>` | GET every 10 minutes (Premium: every minute). A final `200` counts as up: redirects are followed, only a chain that never reaches `200` is a failure. Private-network targets are refused. Alerts after two consecutive failures, with a confirmation re-check one minute after the first one. |
 | Scheduled task | `/add_heartbeat <name> <minutes>` | Your script pings `https://<host>/ping/<token>` after each successful run. No ping for `interval × 1.5` means the job broke. |
 | SSL certificate | `/add_ssl <name> <domain>` | Reads the certificate once a day (default port 443, other ports as `example.com:8443`). Warns 14 and 3 days before expiry, once per threshold; expired, untrusted or wrong-name certificates alert immediately. The counter resets after renewal. |
 | VPS metrics | `/add_agent <name> [minutes]` | The bot replies with a single install command. The agent reports CPU, RAM and disk every N minutes. Alerts when a threshold is crossed in two consecutive reports or the agent goes silent. Thresholds: `/thresholds <id> cpu=85 ram=90 disk=95` (default 90%). |

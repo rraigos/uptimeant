@@ -841,6 +841,8 @@ func TestHTTPCheck(t *testing.T) {
 			w.WriteHeader(500)
 		case "/redir":
 			http.Redirect(w, r, "/", http.StatusFound)
+		case "/loop":
+			http.Redirect(w, r, "/loop", http.StatusFound)
 		}
 	}))
 	defer ok.Close()
@@ -858,8 +860,14 @@ func TestHTTPCheck(t *testing.T) {
 	if good, detail := checkHTTP(ok.URL + "/bad"); good || renderDetail("en", detail) != "The server returned HTTP 500" {
 		t.Fatalf("expected HTTP 500: %v %q", good, detail)
 	}
-	if good, detail := checkHTTP(ok.URL + "/redir"); good || !strings.Contains(renderDetail("en", detail), "redirect") {
-		t.Fatalf("a redirect must be an error: %v %q", good, detail)
+	if good, detail := checkHTTP(ok.URL + "/redir"); !good ||
+		!strings.HasPrefix(renderDetail("en", detail), "HTTP 200 after a redirect to ") ||
+		!strings.Contains(renderDetail("en", detail), ok.URL) {
+		t.Fatalf("a redirect that ends in 200 is up: %v %q", good, detail)
+	}
+	if good, detail := checkHTTP(ok.URL + "/loop"); good ||
+		!strings.Contains(renderDetail("en", detail), "Specify the final address") {
+		t.Fatalf("a redirect loop must stay an error: %v %q", good, detail)
 	}
 }
 

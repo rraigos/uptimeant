@@ -25,6 +25,7 @@ const (
 	premiumDays       = 30
 
 	httpTimeout    = 10 * time.Second
+	maxRedirects   = 10
 	failThreshold  = 2
 	retryMinutes   = 1
 	heartbeatGrace = 1.5

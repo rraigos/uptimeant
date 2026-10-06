@@ -19,8 +19,6 @@ var (
 
 	httpClient = &http.Client{
 		Timeout: httpTimeout,
-		// A redirect means an error: otherwise a check could end up at another, possibly internal, address.
-		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 		Transport: &http.Transport{
 			DialContext:         safeDialer.DialContext,
 			DisableKeepAlives:   true,
@@ -165,14 +163,29 @@ func checkHTTP(target string) (bool, string) {
 		return false, det("d.badurl")
 	}
 	req.Header.Set("User-Agent", "UptimeAnt/1.0 (Telegram uptime bot)")
-	resp, err := httpClient.Do(req)
+	// Redirects are followed: a bare domain answering 301 with www is up, not down.
+	// Each hop is dialed through safeDialer, so a redirect cannot reach an internal address.
+	client := *httpClient
+	hops := 0
+	client.CheckRedirect = func(_ *http.Request, via []*http.Request) error {
+		hops = len(via)
+		if hops >= maxRedirects {
+			return http.ErrUseLastResponse
+		}
+		return nil
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return false, netErrDetail(err)
 	}
 	resp.Body.Close()
+	last := time.Since(t0).Milliseconds()
 	switch {
 	case resp.StatusCode == http.StatusOK:
-		return true, det("d.http_ok", time.Since(t0).Milliseconds())
+		if hops == 0 {
+			return true, det("d.http_ok", last)
+		}
+		return true, det("d.http_redirected", truncRunes(resp.Request.URL.String(), 100), last)
 	case resp.StatusCode >= 300 && resp.StatusCode < 400:
 		return false, det("d.http_redirect", resp.StatusCode, truncRunes(resp.Header.Get("Location"), 100))
 	}
