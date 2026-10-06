@@ -134,7 +134,7 @@ var (
 	errDomain   = errors.New("e.domainfmt")
 )
 
-// checkPublicHost exists only for quick feedback while a pulse is being added.
+// checkPublicHost exists only for quick feedback while a monitor is being added.
 func checkPublicHost(host string) error {
 	host = strings.ToLower(strings.Trim(host, "[]"))
 	if host == "localhost" || strings.HasSuffix(host, ".localhost") || strings.HasSuffix(host, ".local") || strings.HasSuffix(host, ".internal") {

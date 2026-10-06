@@ -74,7 +74,7 @@ func main() {
 			log.Fatal(err)
 		}
 	}()
-	log.Printf("PulseCheck listening on %s", srv.Addr)
+	log.Printf("UptimeAnt listening on %s", srv.Addr)
 
 	if _, err := tg.SetWebhook(ctx, &bot.SetWebhookParams{
 		URL:            cfg.WebhookURL + webhookPath(secret),

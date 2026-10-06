@@ -54,7 +54,7 @@ func parseInvite(param string) (int64, bool) {
 	return id, true
 }
 
-// notifyReferral awards the referrer as soon as the invitee has added the first pulse.
+// notifyReferral awards the referrer as soon as the invitee has added the first monitor.
 func notifyReferral(invitee int64) {
 	referrer, days, err := creditReferral(invitee)
 	if err != nil {

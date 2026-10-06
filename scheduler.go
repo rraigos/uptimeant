@@ -73,10 +73,10 @@ func notifyExpiredPremiums(now int64) {
 	}
 }
 
-func runPool(pulses []*Pulse, worker func(*Pulse)) {
-	ch := make(chan *Pulse)
+func runPool(monitors []*Monitor, worker func(*Monitor)) {
+	ch := make(chan *Monitor)
 	var wg sync.WaitGroup
-	for range min(concurrency, len(pulses)) {
+	for range min(concurrency, len(monitors)) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -84,7 +84,7 @@ func runPool(pulses []*Pulse, worker func(*Pulse)) {
 				func() {
 					defer func() {
 						if r := recover(); r != nil {
-							log.Printf("check panic (pulse %d): %v", p.ID, r)
+							log.Printf("check panic (monitor %d): %v", p.ID, r)
 						}
 					}()
 					worker(p)
@@ -92,7 +92,7 @@ func runPool(pulses []*Pulse, worker func(*Pulse)) {
 			}
 		}()
 	}
-	for _, p := range pulses {
+	for _, p := range monitors {
 		ch <- p
 	}
 	close(ch)
@@ -101,7 +101,7 @@ func runPool(pulses []*Pulse, worker func(*Pulse)) {
 
 // ---- HTTP ----
 
-func httpEvery(p *Pulse, now int64) time.Duration {
+func httpEvery(p *Monitor, now int64) time.Duration {
 	m := freeIntervalMin
 	if p.PremiumUntil > now {
 		m = premiumIntervalMin
@@ -114,15 +114,15 @@ func httpEvery(p *Pulse, now int64) time.Duration {
 }
 
 func checkDueHTTP(now int64) {
-	var due []*Pulse
-	for _, p := range pulsesByType(typeHTTP) {
+	var due []*Monitor
+	for _, p := range monitorsByType(typeHTTP) {
 		if p.LastCheckAt == 0 || time.Duration(now-p.LastCheckAt)*time.Millisecond >= httpEvery(p, now)-time.Second {
 			due = append(due, p)
 		}
 	}
-	runPool(due, func(p *Pulse) {
+	runPool(due, func(p *Monitor) {
 		ok, detail := checkHTTP(p.Target)
-		fresh := getPulse(p.ID)
+		fresh := getMonitor(p.ID)
 		if fresh == nil {
 			return
 		}
@@ -164,7 +164,7 @@ func checkHTTP(target string) (bool, string) {
 	if err != nil {
 		return false, det("d.badurl")
 	}
-	req.Header.Set("User-Agent", "PulseCheck/1.0 (Telegram uptime bot)")
+	req.Header.Set("User-Agent", "UptimeAnt/1.0 (Telegram uptime bot)")
 	resp, err := httpClient.Do(req)
 	if err != nil {
 		return false, netErrDetail(err)
@@ -206,7 +206,7 @@ func checkSilent(now int64) {
 
 // ---- SSL ----
 
-func sslEvery(p *Pulse) time.Duration {
+func sslEvery(p *Monitor) time.Duration {
 	if p.ConsecutiveFailures > 0 && p.Status != "down" {
 		return sslRetryEvery
 	}
@@ -214,15 +214,15 @@ func sslEvery(p *Pulse) time.Duration {
 }
 
 func checkDueSSL(now int64) {
-	var due []*Pulse
-	for _, p := range pulsesByType(typeSSL) {
+	var due []*Monitor
+	for _, p := range monitorsByType(typeSSL) {
 		if p.LastCheckAt == 0 || time.Duration(now-p.LastCheckAt)*time.Millisecond >= sslEvery(p)-time.Second {
 			due = append(due, p)
 		}
 	}
-	runPool(due, func(p *Pulse) {
+	runPool(due, func(p *Monitor) {
 		expires, verr, cerr := fetchCert(p.Target)
-		fresh := getPulse(p.ID)
+		fresh := getMonitor(p.ID)
 		if fresh == nil {
 			return
 		}
@@ -260,7 +260,7 @@ func fetchCert(target string) (expires time.Time, verr, cerr error) {
 	return certs[0].NotAfter, verr, nil
 }
 
-func applySSLResult(p *Pulse, expires time.Time, verr, cerr error, now time.Time) {
+func applySSLResult(p *Monitor, expires time.Time, verr, cerr error, now time.Time) {
 	if cerr != nil {
 		handleFailure(p, det("d.cert_fail", truncRunes(cerr.Error(), 200)), false)
 		return

@@ -1,5 +1,5 @@
 #!/bin/sh
-# PulseCheck agent installer.
+# UptimeAnt agent installer.
 # Usage: curl -fsSL @@BASE_URL@@/agent/install.sh | sudo sh -s -- <TOKEN> [INTERVAL_MINUTES]
 set -eu
 
@@ -22,26 +22,26 @@ case "$(uname -m)" in
   *) die "architecture $(uname -m) is not supported" ;;
 esac
 
-curl -fsSL "$BASE_URL/agent/bin/pulsecheck-agent-linux-$ARCH" -o /usr/local/bin/pulsecheck-agent.new
-chmod 755 /usr/local/bin/pulsecheck-agent.new
-mv -f /usr/local/bin/pulsecheck-agent.new /usr/local/bin/pulsecheck-agent
+curl -fsSL "$BASE_URL/agent/bin/uptimeant-agent-linux-$ARCH" -o /usr/local/bin/uptimeant-agent.new
+chmod 755 /usr/local/bin/uptimeant-agent.new
+mv -f /usr/local/bin/uptimeant-agent.new /usr/local/bin/uptimeant-agent
 
 umask 077
-cat > /etc/pulsecheck-agent.env <<EOF
-PULSECHECK_URL=$BASE_URL
-PULSECHECK_TOKEN=$TOKEN
-PULSECHECK_INTERVAL=$INTERVAL
+cat > /etc/uptimeant-agent.env <<EOF
+UPTIMEANT_URL=$BASE_URL
+UPTIMEANT_TOKEN=$TOKEN
+UPTIMEANT_INTERVAL=$INTERVAL
 EOF
 
-cat > /etc/systemd/system/pulsecheck-agent.service <<EOF
+cat > /etc/systemd/system/uptimeant-agent.service <<EOF
 [Unit]
-Description=PulseCheck agent (CPU/RAM/disk reports)
+Description=UptimeAnt agent (CPU/RAM/disk reports)
 After=network-online.target
 Wants=network-online.target
 
 [Service]
-EnvironmentFile=/etc/pulsecheck-agent.env
-ExecStart=/usr/local/bin/pulsecheck-agent
+EnvironmentFile=/etc/uptimeant-agent.env
+ExecStart=/usr/local/bin/uptimeant-agent
 Restart=always
 RestartSec=10
 DynamicUser=yes
@@ -52,6 +52,6 @@ WantedBy=multi-user.target
 EOF
 
 systemctl daemon-reload
-systemctl enable pulsecheck-agent >/dev/null 2>&1
-systemctl restart pulsecheck-agent
-echo "Done: pulsecheck-agent is running and reports every $INTERVAL min. Logs: journalctl -u pulsecheck-agent"
+systemctl enable uptimeant-agent >/dev/null 2>&1
+systemctl restart uptimeant-agent
+echo "Done: uptimeant-agent is running and reports every $INTERVAL min. Logs: journalctl -u uptimeant-agent"

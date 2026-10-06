@@ -14,14 +14,14 @@ import (
 )
 
 const (
-	freeMaxPulses           = 5
+	freeMaxMonitors         = 5
 	freeIntervalMin         = 10
 	premiumIntervalMin      = 1
 	maxHeartbeatIntervalMin = 10080
 	maxExtraChats           = 5
 
 	// Premium price in Telegram Stars per 30 days: one-off charge, no auto-renewal.
-	premiumPriceStars = 150
+	premiumPriceStars = 100
 	premiumDays       = 30
 
 	httpTimeout    = 10 * time.Second
@@ -135,7 +135,7 @@ func loadConfig() (Config, error) {
 		BotToken:    getenv("BOT_TOKEN", ""),
 		WebhookURL:  strings.TrimRight(getenv("WEBHOOK_URL", ""), "/"),
 		ListenAddr:  listenAddr(port),
-		DBPath:      getenv("DB_PATH", "pulsecheck.db"),
+		DBPath:      getenv("DB_PATH", "uptimeant.db"),
 		TelegramAPI: getenv("TELEGRAM_API_URL", ""),
 		Timezone:    getenv("TIMEZONE", "UTC"),
 	}
@@ -158,11 +158,11 @@ func loadConfig() (Config, error) {
 	if c.BotToken == "" || strings.Contains(c.BotToken, "replace_me") {
 		return c, fmt.Errorf("BOT_TOKEN is not set, fill in .env (see .env.example)")
 	}
-	// A path prefix is allowed (e.g. https://host/pulsecheck): Nginx strips it before the Go service,
+	// A path prefix is allowed (e.g. https://host/uptimeant): Nginx strips it before the Go service,
 	// while the ping URL, the webhook and the agent install command keep it as is.
 	u, err := url.Parse(c.WebhookURL)
 	if err != nil || u.Scheme != "https" || u.Host == "" || u.RawQuery != "" || u.Fragment != "" || strings.Contains(c.WebhookURL, "your-domain.example") {
-		return c, fmt.Errorf("WEBHOOK_URL must be a real https address, for example https://pulse.example.com or https://host/pulsecheck")
+		return c, fmt.Errorf("WEBHOOK_URL must be a real https address, for example https://uptime.example.com or https://host/uptimeant")
 	}
 	return c, nil
 }

@@ -1,0 +1,19 @@
+[Unit]
+Description=UptimeAnt Telegram uptime bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+WorkingDirectory=/opt/uptimeant
+ExecStart=/opt/uptimeant/uptimeant
+Restart=always
+RestartSec=5
+DynamicUser=yes
+StateDirectory=uptimeant
+Environment=DB_PATH=/var/lib/uptimeant/uptimeant.db
+EnvironmentFile=/opt/uptimeant/.env
+NoNewPrivileges=yes
+MemoryMax=200M
+
+[Install]
+WantedBy=multi-user.target

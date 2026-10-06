@@ -60,9 +60,9 @@ func inviteScreen(u *User) screen {
 
 func mainScreen(u *User) screen {
 	l := u.L()
-	pulses := listPulses(u.ID)
+	monitors := listMonitors(u.ID)
 	var up, down, wait int
-	for _, p := range pulses {
+	for _, p := range monitors {
 		switch p.Status {
 		case "up":
 			up++
@@ -73,7 +73,7 @@ func mainScreen(u *User) screen {
 		}
 	}
 	summary := tr(l, "menu.none")
-	if len(pulses) > 0 {
+	if len(monitors) > 0 {
 		summary = tr(l, "menu.summary", up, down, wait)
 	}
 	second := line(ib(l, "btn.invite", "inv"), ib(l, "btn.help", "help"))
@@ -91,7 +91,7 @@ func mainScreen(u *User) screen {
 }
 
 func helpScreen(l Lang) screen {
-	return simpleScreen(tr(l, "help.text", sslWarnFarDays, sslWarnNearDay, freeMaxPulses, freeIntervalMin), menuRow(l))
+	return simpleScreen(tr(l, "help.text", sslWarnFarDays, sslWarnNearDay, freeMaxMonitors, freeIntervalMin), menuRow(l))
 }
 
 func addScreen(l Lang) screen {
@@ -111,15 +111,15 @@ const maxListButtons = 40
 
 func listScreen(u *User) screen {
 	l := u.L()
-	pulses := listPulses(u.ID)
-	if len(pulses) == 0 {
+	monitors := listMonitors(u.ID)
+	if len(monitors) == 0 {
 		return simpleScreen(tr(l, "list.empty"), line(ib(l, "btn.add", "add")), menuRow(l))
 	}
 	text := tr(l, "list.title")
 	var rows [][]models.InlineKeyboardButton
-	for i, p := range pulses {
+	for i, p := range monitors {
 		if i == maxListButtons {
-			text += "\n" + tr(l, "list.more", maxListButtons, len(pulses))
+			text += "\n" + tr(l, "list.more", maxListButtons, len(monitors))
 			break
 		}
 		rows = append(rows, line(btn(statusDot[p.Status]+" "+truncRunes(p.Name, 40), fmt.Sprintf("p:%d", p.ID))))
@@ -132,7 +132,7 @@ func daysLeft(expiresAt int64) int { return int((expiresAt - nowMs()) / 86400000
 
 func label(l Lang, key, value string) string { return tr(l, key) + " " + value }
 
-func cardScreen(u *User, p *Pulse) screen {
+func cardScreen(u *User, p *Monitor) screen {
 	l := u.L()
 	lines := []string{
 		statusDot[p.Status] + " <b>" + esc(p.Name) + "</b>",
@@ -176,7 +176,7 @@ func cardScreen(u *User, p *Pulse) screen {
 	return screen{text: strings.Join(lines, "\n"), rows: rows}
 }
 
-func historyScreen(u *User, p *Pulse) screen {
+func historyScreen(u *User, p *Monitor) screen {
 	l := u.L()
 	out := []string{tr(l, "hist.title", esc(p.Name))}
 	if u.Premium() {
@@ -223,12 +223,12 @@ func historyScreen(u *User, p *Pulse) screen {
 	return simpleScreen(strings.Join(out, "\n"), line(ib(l, "btn.back", fmt.Sprintf("p:%d", p.ID))))
 }
 
-func deleteScreen(l Lang, p *Pulse) screen {
+func deleteScreen(l Lang, p *Monitor) screen {
 	return simpleScreen(tr(l, "del.confirm", esc(p.Name)),
 		line(ib(l, "btn.delete", fmt.Sprintf("delok:%d", p.ID)), ib(l, "btn.cancel", fmt.Sprintf("p:%d", p.ID))))
 }
 
-func thresholdsScreen(l Lang, p *Pulse) screen {
+func thresholdsScreen(l Lang, p *Monitor) screen {
 	m := p.Meta
 	return simpleScreen(tr(l, "thr.title", esc(p.Name)),
 		line(ib(l, "btn.thr_cpu", fmt.Sprintf("thr:%d:cpu", p.ID), m.ThrCPU),
@@ -237,11 +237,11 @@ func thresholdsScreen(l Lang, p *Pulse) screen {
 		line(ib(l, "btn.back", fmt.Sprintf("p:%d", p.ID))))
 }
 
-func installScreen(l Lang, p *Pulse) screen {
+func installScreen(l Lang, p *Monitor) screen {
 	return simpleScreen(tr(l, "inst.screen", esc(installCmd(p))), line(ib(l, "btn.back", fmt.Sprintf("p:%d", p.ID))))
 }
 
-func createdScreen(l Lang, p *Pulse) screen {
+func createdScreen(l Lang, p *Monitor) screen {
 	grace := int(float64(p.IntervalMinutes)*heartbeatGrace + 0.5)
 	var body string
 	switch p.Type {

@@ -23,12 +23,12 @@ var installScript string
 
 var (
 	tokenRe     = regexp.MustCompile(`^[a-f0-9]{32}$`)
-	agentFileRe = regexp.MustCompile(`^pulsecheck-agent-linux-(amd64|arm64)$`)
+	agentFileRe = regexp.MustCompile(`^uptimeant-agent-linux-(amd64|arm64)$`)
 )
 
 // The webhook secret is derived from the bot token: Telegram sends it in a header, other requests are dropped.
 func webhookSecret(botToken string) string {
-	sum := sha256.Sum256([]byte("pulsecheck:" + botToken))
+	sum := sha256.Sum256([]byte("uptimeant:" + botToken))
 	return hex.EncodeToString(sum[:])
 }
 
@@ -59,7 +59,7 @@ func newServer(webhook http.Handler, baseURL, secret string) *http.ServeMux {
 			return
 		}
 		token := r.PathValue("token")
-		var p *Pulse
+		var p *Monitor
 		if tokenRe.MatchString(token) {
 			p = getByToken(token, typeHeartbeat)
 		}
@@ -109,7 +109,7 @@ func validPct(v float64) bool { return v >= 0 && v <= 100 }
 
 func handleAgentReport(w http.ResponseWriter, r *http.Request) {
 	token, _ := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
-	var p *Pulse
+	var p *Monitor
 	if tokenRe.MatchString(token) {
 		p = getByToken(token, typeAgent)
 	}
@@ -132,7 +132,7 @@ func handleAgentReport(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, `{"ok":true,"interval":%d}`, p.IntervalMinutes)
 }
 
-func processAgentReport(p *Pulse, rep agentReport) {
+func processAgentReport(p *Monitor, rep agentReport) {
 	now := nowMs()
 	meta := p.Meta
 	wasSilent := p.Status == "down" && meta.Silent
@@ -154,7 +154,7 @@ func processAgentReport(p *Pulse, rep agentReport) {
 	}
 	r0, r1, r2 := int(math.Round(rep.CPU)), int(math.Round(rep.RAM)), int(math.Round(rep.Disk))
 
-	fresh := getPulse(p.ID)
+	fresh := getMonitor(p.ID)
 	if fresh == nil {
 		return
 	}
@@ -163,7 +163,7 @@ func processAgentReport(p *Pulse, rep agentReport) {
 		if len(breaches) == 0 {
 			return
 		}
-		if fresh = getPulse(p.ID); fresh == nil {
+		if fresh = getMonitor(p.ID); fresh == nil {
 			return
 		}
 	} else if len(breaches) == 0 {

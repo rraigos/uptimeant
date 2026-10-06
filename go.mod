@@ -1,4 +1,4 @@
-module pulsecheck
+module uptimeant
 
 go 1.26.0
 

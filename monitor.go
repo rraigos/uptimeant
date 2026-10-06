@@ -28,8 +28,8 @@ func sendTo(ctx context.Context, chatID int64, text string, markup models.ReplyM
 	}
 }
 
-// sendAlert delivers the notification to the pulse owner (plus extra chats for Premium) in their language.
-func sendAlert(userID, pulseID int64, build func(Lang) string) {
+// sendAlert delivers the notification to the monitor owner (plus extra chats for Premium) in their language.
+func sendAlert(userID, monitorID int64, build func(Lang) string) {
 	u := getUser(userID)
 	if u == nil {
 		return
@@ -48,14 +48,14 @@ func sendAlert(userID, pulseID int64, build func(Lang) string) {
 	defer cancel()
 	for id := range chats {
 		var markup models.ReplyMarkup
-		if id == u.ChatID && pulseID > 0 {
-			markup = simpleScreen("", line(ib(l, "btn.open", fmt.Sprintf("p:%d", pulseID)))).markup()
+		if id == u.ChatID && monitorID > 0 {
+			markup = simpleScreen("", line(ib(l, "btn.open", fmt.Sprintf("p:%d", monitorID)))).markup()
 		}
 		sendTo(ctx, id, text, markup)
 	}
 }
 
-func downTitleKey(p *Pulse) string {
+func downTitleKey(p *Monitor) string {
 	switch p.Type {
 	case typeHeartbeat:
 		return "title.hb"
@@ -70,7 +70,7 @@ func downTitleKey(p *Pulse) string {
 	return "title.http"
 }
 
-func handleSuccess(p *Pulse, detail string) {
+func handleSuccess(p *Monitor, detail string) {
 	now := nowMs()
 	wasDown := p.Status == "down"
 	// Signals more often than once per 30 seconds are not written to history, so flooding cannot bloat the DB.
@@ -90,7 +90,7 @@ func handleSuccess(p *Pulse, detail string) {
 	}
 }
 
-func handleFailure(p *Pulse, detail string, immediate bool) {
+func handleFailure(p *Monitor, detail string, immediate bool) {
 	now := nowMs()
 	failures := p.ConsecutiveFailures + 1
 	goDown := p.Status != "down" && (immediate || failures >= failThreshold)
@@ -104,7 +104,7 @@ func handleFailure(p *Pulse, detail string, immediate bool) {
 		return
 	}
 	go sendAlert(p.UserID, p.ID, func(l Lang) string {
-		lines := []string{"🔴 <b>" + tr(l, downTitleKey(p)) + "</b>", tr(l, "alert.pulse", esc(p.Name))}
+		lines := []string{"🔴 <b>" + tr(l, downTitleKey(p)) + "</b>", tr(l, "alert.monitor", esc(p.Name))}
 		if p.Type == typeHTTP {
 			lines = append(lines, tr(l, "alert.addr", esc(p.Target)))
 		}

@@ -1,4 +1,6 @@
-# PulseCheck
+# UptimeAnt
+
+<img src="brand/uptimeant-icon.svg" alt="UptimeAnt" width="72" height="72">
 
 Uptime monitoring that lives inside Telegram: HTTP checks, heartbeat URLs for cron jobs, SSL
 certificate expiry and VPS metrics, all reported into one chat. No dashboard, no email reports,
@@ -7,7 +9,7 @@ no second app to open.
 Ships as one static Go binary (no cgo, no runtime), SQLite in a single file, webhook mode,
 around 15 MB of RAM at rest.
 
-[@pulsecheck_monitor_bot](https://t.me/pulsecheck_monitor_bot) · MIT · Go 1.26+
+[@uptimeantbot](https://t.me/uptimeantbot) · MIT · Go 1.26+
 
 ## What it watches
 
@@ -18,7 +20,7 @@ around 15 MB of RAM at rest.
 | SSL certificate | `/add_ssl <name> <domain>` | Reads the certificate once a day (default port 443, other ports as `example.com:8443`). Warns 14 and 3 days before expiry, once per threshold; expired, untrusted or wrong-name certificates alert immediately. The counter resets after renewal. |
 | VPS metrics | `/add_agent <name> [minutes]` | The bot replies with a single install command. The agent reports CPU, RAM and disk every N minutes. Alerts when a threshold is crossed in two consecutive reports or the agent goes silent. Thresholds: `/thresholds <id> cpu=85 ram=90 disk=95` (default 90%). |
 
-SSL pulses and agents count towards the pulse limit (5 on the free plan). Heartbeat and agent
+SSL monitors and agents count towards the monitor limit (5 on the free plan). Heartbeat and agent
 intervals: 10 minutes and up on free, 1 minute and up on Premium.
 
 ## Configure
@@ -26,11 +28,11 @@ intervals: 10 minutes and up on free, 1 minute and up on Premium.
 | Setting | Where | Meaning |
 | --- | --- | --- |
 | `BOT_TOKEN` | `.env` | Token from [@BotFather](https://t.me/BotFather) |
-| `WEBHOOK_URL` | `.env` | Public HTTPS base URL of your server, no trailing slash. A path prefix is fine (`https://host/pulsecheck`) when you run behind a reverse proxy that strips it. |
+| `WEBHOOK_URL` | `.env` | Public HTTPS base URL of your server, no trailing slash. A path prefix is fine (`https://host/uptimeant`) when you run behind a reverse proxy that strips it. |
 | `ADMIN_IDS` | `.env` | Numeric Telegram IDs allowed to issue Star refunds. Without them `/payments` and `/refund` do nothing. |
 | `SUPPORT_USERNAME` | `.env` | `@nickname` or e-mail offered by `/paysupport`. Telegram requires a working payment contact, so `/premium`, `/paysupport` and payments stay disabled until it is set. |
 | `TIMEZONE` | `.env` | IANA zone used to render dates, `UTC` when unset. |
-| `premiumPriceStars` | `config.go` | Premium price in Stars for 30 days (currently 150). |
+| `premiumPriceStars` | `config.go` | Premium price in Stars for 30 days (currently 100). |
 
 ## Build and run
 
@@ -42,12 +44,12 @@ GOARCH=arm64 ./build.sh       # for an ARM VPS
 ```
 
 The script builds the linux amd64/arm64 agent binaries, embeds them in the server (`go:embed`)
-and produces `pulsecheck`. You can build locally and copy that one file to the VPS. Plain
+and produces `uptimeant`. You can build locally and copy that one file to the VPS. Plain
 `go build` also works, but then the binary carries no agent to download.
 
 ```bash
 cp .env.example .env          # set BOT_TOKEN and WEBHOOK_URL
-./pulsecheck
+./uptimeant
 ```
 
 The SQLite schema is created on first start. The bot registers its own webhook and the localized
@@ -55,8 +57,8 @@ command menu.
 
 ### systemd
 
-Put the binary and `.env` in `/opt/pulsecheck`, copy `pulsecheck.service` to
-`/etc/systemd/system/`, then `systemctl enable --now pulsecheck`.
+Put the binary and `.env` in `/opt/uptimeant`, copy `uptimeant.service` to
+`/etc/systemd/system/`, then `systemctl enable --now uptimeant`.
 
 ### PM2
 
@@ -67,7 +69,7 @@ pm2 save && pm2 startup
 
 ## Nginx + TLS
 
-Point the domain at the server, get a certificate (`certbot --nginx -d pulse.example.com`) and
+Point the domain at the server, get a certificate (`certbot --nginx -d uptime.example.com`) and
 proxy everything to Go. The binary binds to `127.0.0.1` only; Nginx is the public face.
 
 ```nginx
@@ -88,17 +90,17 @@ The process fits into tight cgroups: it caps the Go heap and thread count on its
 Installed on the user's own server (Linux + systemd, run as root once):
 
 ```bash
-curl -fsSL https://pulse.example.com/agent/install.sh | sudo sh -s -- <TOKEN> 10
+curl -fsSL https://uptime.example.com/agent/install.sh | sudo sh -s -- <TOKEN> 10
 ```
 
-The installer downloads the matching binary from your server (`/agent/bin/pulsecheck-agent-linux-<arch>`),
-writes the token to `/etc/pulsecheck-agent.env` (mode 600) and starts a `pulsecheck-agent`
+The installer downloads the matching binary from your server (`/agent/bin/uptimeant-agent-linux-<arch>`),
+writes the token to `/etc/uptimeant-agent.env` (mode 600) and starts the `uptimeant-agent`
 systemd service that runs without root (`DynamicUser`). Metrics come from `/proc` and `statfs`
-on `/` (another partition: `PULSECHECK_DISK_PATH`): CPU is averaged between reports, RAM follows
-`MemAvailable`, disk matches `df`. Logs: `journalctl -u pulsecheck-agent`. Remove it with:
+on `/` (another partition: `UPTIMEANT_DISK_PATH`): CPU is averaged between reports, RAM follows
+`MemAvailable`, disk matches `df`. Logs: `journalctl -u uptimeant-agent`. Remove it with:
 
 ```bash
-systemctl disable --now pulsecheck-agent && rm /usr/local/bin/pulsecheck-agent /etc/pulsecheck-agent.env /etc/systemd/system/pulsecheck-agent.service
+systemctl disable --now uptimeant-agent && rm /usr/local/bin/uptimeant-agent /etc/uptimeant-agent.env /etc/systemd/system/uptimeant-agent.service
 ```
 
 ## Languages
@@ -107,7 +109,7 @@ The interface is fully translated into English (default), German, Russian, Spani
 On first `/start` the language is detected from the Telegram client's `language_code`, so the
 language picker is usually never shown; unsupported client languages fall back to the manual
 choice, and the selection can be changed later via `/language` or the Language button in the menu.
-Alerts are written in the language of the pulse owner, check history in the language of the
+Alerts are written in the language of the monitor owner, check history in the language of the
 reader. The Telegram command menu is localized too.
 
 Texts live in `lang_en.go`, `lang_ru.go`, `lang_uk.go`, `lang_de.go`, `lang_es.go`. Reasons for a
@@ -126,7 +128,7 @@ An invite counts only if all of these hold:
 
 - the user entered the bot through the link for the first time (spamming your own old accounts earns nothing);
 - inviter and invitee are not the same account;
-- the invitee added at least one pulse.
+- the invitee added at least one monitor.
 
 The inviter gets 7 days of Premium per such friend, up to 90 accumulated days (`referralRewardDays`
 and `referralCapDays` in `config.go`). Each invitee is credited exactly once, and granted days are
@@ -154,8 +156,8 @@ keep working.
 
 ## Misc
 
-- **Database:** `pulses.type` holds `http`, `heartbeat`, `ssl` and `agent`; extra fields are JSON
-  in `pulses.meta`.
+- **Database:** `monitors.type` holds `http`, `heartbeat`, `ssl` and `agent`; extra fields are JSON
+  in `monitors.meta`.
 - **History:** check rows are kept for 30 days and pruned hourly.
 - **Tests:** `go test ./...` runs the bot against a stub Telegram API, no network needed.
 - `TELEGRAM_API_URL` (optional) points at a local Bot API server or a stub, used by the tests.

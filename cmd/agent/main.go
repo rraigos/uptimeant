@@ -1,4 +1,4 @@
-// PulseCheck agent: posts this VPS's CPU/RAM/disk usage to the server every N minutes.
+// UptimeAnt agent: posts this VPS's CPU/RAM/disk usage to the server every N minutes.
 package main
 
 import (
@@ -26,18 +26,18 @@ type report struct {
 type cpuTimes struct{ idle, total uint64 }
 
 func main() {
-	baseURL := strings.TrimRight(os.Getenv("PULSECHECK_URL"), "/")
-	token := os.Getenv("PULSECHECK_TOKEN")
-	diskPath := os.Getenv("PULSECHECK_DISK_PATH")
+	baseURL := strings.TrimRight(os.Getenv("UPTIMEANT_URL"), "/")
+	token := os.Getenv("UPTIMEANT_TOKEN")
+	diskPath := os.Getenv("UPTIMEANT_DISK_PATH")
 	if diskPath == "" {
 		diskPath = "/"
 	}
-	minutes, err := strconv.Atoi(os.Getenv("PULSECHECK_INTERVAL"))
+	minutes, err := strconv.Atoi(os.Getenv("UPTIMEANT_INTERVAL"))
 	if err != nil || minutes < 1 {
 		minutes = 10
 	}
 	if baseURL == "" || token == "" {
-		log.Fatal("PULSECHECK_URL and PULSECHECK_TOKEN are required")
+		log.Fatal("UPTIMEANT_URL and UPTIMEANT_TOKEN are required")
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

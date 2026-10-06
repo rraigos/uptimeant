@@ -101,7 +101,7 @@ func setup(t *testing.T) *fakeTG {
 	}))
 	t.Cleanup(srv.Close)
 
-	cfg = Config{BotToken: "1:test", BotUsername: "pulsecheck_test_bot", WebhookURL: "https://pulse.test", SupportContact: "@test_support"}
+	cfg = Config{BotToken: "1:test", BotUsername: "uptimeant_test_bot", WebhookURL: "https://monitor.test", SupportContact: "@test_support"}
 	if err := openDB(filepath.Join(t.TempDir(), "t.db")); err != nil {
 		t.Fatal(err)
 	}
@@ -131,10 +131,10 @@ func press(uid int64, data string) {
 	}})
 }
 
-func mustPulse(t *testing.T, uid int64, typ, name, target string, interval int, meta Meta) *Pulse {
+func mustMonitor(t *testing.T, uid int64, typ, name, target string, interval int, meta Meta) *Monitor {
 	t.Helper()
 	upsertUser(uid, "")
-	p, err := addPulse(uid, typ, name, target, interval, meta)
+	p, err := addMonitor(uid, typ, name, target, interval, meta)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -210,7 +210,7 @@ func TestCodeUsesOnlyKnownKeys(t *testing.T) {
 	}
 }
 
-func TestEveryIntervalAndPulseTypeHasLabels(t *testing.T) {
+func TestEveryIntervalAndMonitorTypeHasLabels(t *testing.T) {
 	for _, x := range langs {
 		for _, m := range intervalOptions {
 			if _, ok := catalog[x.Code][fmt.Sprintf("iv.%d", m)]; !ok {
@@ -240,7 +240,7 @@ func TestLanguageSelectionAndMenu(t *testing.T) {
 	f := setup(t)
 	say(1, "/start")
 	f.waitFor(t, "Select your language")
-	if f.count("PulseCheck") != 0 {
+	if f.count("UptimeAnt") != 0 {
 		t.Fatal("the first /start must show only the language picker")
 	}
 	press(1, "lg:ru")
@@ -256,14 +256,14 @@ func TestLanguageSelectionAndMenu(t *testing.T) {
 	press(1, "lg:uk")
 	f.waitFor(t, "Стежу за вашими сайтами")
 	press(1, "lg:en")
-	f.waitFor(t, "I keep an eye on your websites")
+	f.waitFor(t, "I watch your websites")
 	press(1, "lg:xx") // unknown code is ignored
 	if getUser(1).Lang != "en" {
 		t.Fatal("an unknown language code must not change the language")
 	}
 	f.reset()
 	say(1, "/start")
-	f.waitFor(t, "I keep an eye on your websites")
+	f.waitFor(t, "I watch your websites")
 }
 
 func TestAutoLanguageFromTelegramCode(t *testing.T) {
@@ -311,12 +311,12 @@ func TestAutoLanguageFromTelegramCode(t *testing.T) {
 func TestDefaultLanguageIsEnglish(t *testing.T) {
 	f := setup(t)
 	say(5, "/menu")
-	f.waitFor(t, "You have no pulses yet.")
+	f.waitFor(t, "No monitors yet.")
 	say(5, "hello")
 	f.waitFor(t, "I did not understand that")
 }
 
-func TestWizardsCreatePulses(t *testing.T) {
+func TestWizardsCreateMonitors(t *testing.T) {
 	f := setup(t)
 	upsertUser(1, "")
 
@@ -327,9 +327,9 @@ func TestWizardsCreatePulses(t *testing.T) {
 	say(1, "http://127.0.0.1")
 	f.waitFor(t, "Internal network addresses are not allowed")
 	say(1, "http://93.184.216.34")
-	f.waitFor(t, "Pulse added")
-	if p := getPulse(1); p == nil || p.Type != typeHTTP || p.Name != "My site" {
-		t.Fatalf("unexpected pulse: %+v", p)
+	f.waitFor(t, "Monitor added")
+	if p := getMonitor(1); p == nil || p.Type != typeHTTP || p.Name != "My site" {
+		t.Fatalf("unexpected monitor: %+v", p)
 	}
 
 	press(1, "new:hb")
@@ -339,7 +339,7 @@ func TestWizardsCreatePulses(t *testing.T) {
 	f.waitFor(t, "Invalid interval")
 	press(1, "iv:60")
 	f.waitFor(t, "Cron example")
-	if p := getPulse(2); p == nil || p.Type != typeHeartbeat || p.IntervalMinutes != 60 {
+	if p := getMonitor(2); p == nil || p.Type != typeHeartbeat || p.IntervalMinutes != 60 {
 		t.Fatalf("unexpected heartbeat: %+v", p)
 	}
 
@@ -352,7 +352,7 @@ func TestWizardsCreatePulses(t *testing.T) {
 	say(1, "Box")
 	press(1, "iv:30")
 	f.waitFor(t, "install.sh | sudo sh -s -- ")
-	agent := getPulse(4)
+	agent := getMonitor(4)
 	if agent == nil || agent.Type != typeAgent || agent.Meta.ThrCPU != defaultThreshold {
 		t.Fatalf("unexpected agent: %+v", agent)
 	}
@@ -360,7 +360,7 @@ func TestWizardsCreatePulses(t *testing.T) {
 	// cards, history and thresholds via buttons
 	f.reset()
 	press(1, "l")
-	f.waitFor(t, "My pulses")
+	f.waitFor(t, "My monitors")
 	press(1, "p:4")
 	f.waitFor(t, "Report every")
 	press(1, "hist:4")
@@ -374,23 +374,23 @@ func TestWizardsCreatePulses(t *testing.T) {
 	say(1, "abc")
 	f.waitFor(t, "Enter a whole number from 1 to 100")
 	say(1, "75")
-	if getPulse(4).Meta.ThrCPU != 75 {
+	if getMonitor(4).Meta.ThrCPU != 75 {
 		t.Fatal("threshold was not saved")
 	}
 
-	// another user neither sees nor deletes someone else's pulse
+	// another user neither sees nor deletes someone else's monitor
 	upsertUser(2, "")
 	press(2, "p:1")
-	f.waitFor(t, "Pulse not found")
+	f.waitFor(t, "Monitor not found")
 	press(2, "delok:1")
-	if getPulse(1) == nil {
-		t.Fatal("another user deleted the pulse")
+	if getMonitor(1) == nil {
+		t.Fatal("another user deleted the monitor")
 	}
 	press(1, "del:1")
 	f.waitFor(t, "Delete “My site”?")
 	press(1, "delok:1")
-	if getPulse(1) != nil {
-		t.Fatal("the owner could not delete the pulse")
+	if getMonitor(1) != nil {
+		t.Fatal("the owner could not delete the monitor")
 	}
 
 	// cancel the wizard
@@ -411,13 +411,13 @@ func TestCommandsAndLimits(t *testing.T) {
 	f.waitFor(t, "Internal network addresses are not allowed")
 	say(1, "/add_heartbeat Fast 1")
 	f.waitFor(t, "Invalid interval")
-	if n := countPulses(1); n != 4 {
-		t.Fatalf("expected 4 pulses, got %d", n)
+	if n := countMonitors(1); n != 4 {
+		t.Fatalf("expected 4 monitors, got %d", n)
 	}
 	say(1, "/add_agent Fifth 10")
 	say(1, "/add_agent Sixth 10")
-	f.waitFor(t, "The free plan limit of 5 pulses has been reached.")
-	if f.count("To remove the limit, subscribe to Premium.") != 1 {
+	f.waitFor(t, "The free plan limit of 5 monitors has been reached.")
+	if f.count("Premium removes the limit.") != 1 {
 		t.Fatal("the limit message should offer Premium when payments are enabled")
 	}
 	if f.count("install.sh | sudo sh -s -- ") != 2 {
@@ -426,12 +426,12 @@ func TestCommandsAndLimits(t *testing.T) {
 
 	f.reset()
 	say(1, "/list")
-	f.waitFor(t, "My pulses")
+	f.waitFor(t, "My monitors")
 	say(1, "/status 3")
 	f.waitFor(t, "Domain")
 	say(1, "/thresholds 4 cpu=80 ram=70")
 	f.waitFor(t, "Limits for My VPS")
-	if m := getPulse(4).Meta; m.ThrCPU != 80 || m.ThrRAM != 70 || m.ThrDisk != 90 {
+	if m := getMonitor(4).Meta; m.ThrCPU != 80 || m.ThrRAM != 70 || m.ThrDisk != 90 {
 		t.Fatalf("thresholds not applied: %+v", m)
 	}
 	say(1, "/thresholds 4 cpu=500")
@@ -464,7 +464,7 @@ func TestInviteLinkIsSignedAndStable(t *testing.T) {
 	if id, ok := parseInvite(param); !ok || id != 42 {
 		t.Fatalf("the link was not parsed back: %q -> %d, %v", param, id, ok)
 	}
-	if link := inviteLink(42); !strings.Contains(link, "t.me/pulsecheck_test_bot?start="+param) {
+	if link := inviteLink(42); !strings.Contains(link, "t.me/uptimeant_test_bot?start="+param) {
 		t.Fatalf("unexpected link: %q", link)
 	}
 	// someone else's signature, empty and malformed parameters are rejected
@@ -485,7 +485,7 @@ func TestInviteScreen(t *testing.T) {
 	f.waitFor(t, inviteLink(1))
 	f.reset()
 	press(1, "inv")
-	f.waitFor(t, "Friends with a pulse: 0")
+	f.waitFor(t, "Friends with a monitor: 0")
 }
 
 func TestReferralRewardFlow(t *testing.T) {
@@ -501,23 +501,23 @@ func TestReferralRewardFlow(t *testing.T) {
 		t.Fatal("the invite was not recorded")
 	}
 	if getUser(1).Premium() {
-		t.Fatal("an invite without a pulse must not pay")
+		t.Fatal("an invite without a monitor must not pay")
 	}
 
 	say(2, "/add_http Friend http://93.184.216.34")
-	f.waitFor(t, "Pulse added")
+	f.waitFor(t, "Monitor added")
 	// the reward reaches the inviter in the inviter's own language
-	f.waitFor(t, "Приглашённый вами друг добавил первый пульс: 7 дней Premium")
+	f.waitFor(t, "Приглашённый вами друг добавил первый монитор: 7 дней Premium")
 	inviter := getUser(1)
 	left := inviter.PremiumUntil - nowMs()
 	if !inviter.Premium() || left < 6*86400000 || left > int64(referralRewardDays)*86400000 {
 		t.Fatalf("expected about %d days of Premium, got %d ms: %+v", referralRewardDays, left, inviter)
 	}
 
-	// the same invitee's next pulse does not credit a second time
+	// the same invitee's next monitor does not credit a second time
 	before := inviter.PremiumUntil
 	say(2, "/add_http Second http://93.184.216.35")
-	f.waitFor(t, "Pulse added")
+	f.waitFor(t, "Monitor added")
 	if got := getUser(1).PremiumUntil; got != before {
 		t.Fatalf("the reward was credited twice: %d instead of %d", got, before)
 	}
@@ -573,7 +573,7 @@ func TestReferralCap(t *testing.T) {
 
 func TestHeartbeatPingAndSilence(t *testing.T) {
 	f := setup(t)
-	p := mustPulse(t, 1, typeHeartbeat, "Backup", strings.Repeat("a", 32), 10, Meta{})
+	p := mustMonitor(t, 1, typeHeartbeat, "Backup", strings.Repeat("a", 32), 10, Meta{})
 	srv := httptest.NewServer(newServer(http.NotFoundHandler(), cfg.WebhookURL, ""))
 	defer srv.Close()
 
@@ -588,12 +588,12 @@ func TestHeartbeatPingAndSilence(t *testing.T) {
 	if get("/ping/"+strings.Repeat("b", 32)) != 404 || get("/ping/zzz") != 404 {
 		t.Fatal("an unknown token must return 404")
 	}
-	if get("/ping/"+p.Target) != 200 || getPulse(p.ID).Status != "up" {
-		t.Fatal("a ping did not make the pulse up")
+	if get("/ping/"+p.Target) != 200 || getMonitor(p.ID).Status != "up" {
+		t.Fatal("a ping did not make the monitor up")
 	}
 
 	// the last ping was 20 minutes ago with a 10 minute interval (limit 15) → down
-	db.Exec(`UPDATE pulses SET last_success_at = ? WHERE id = ?`, nowMs()-20*60000, p.ID)
+	db.Exec(`UPDATE monitors SET last_success_at = ? WHERE id = ?`, nowMs()-20*60000, p.ID)
 	checkSilent(nowMs())
 	f.waitFor(t, "A scheduled task went silent")
 	f.waitFor(t, "No signal for 20 min with an expected interval of 10 min.")
@@ -602,23 +602,23 @@ func TestHeartbeatPingAndSilence(t *testing.T) {
 	f.waitCount(t, "A scheduled task went silent", 1)
 	get("/ping/" + p.Target)
 	f.waitFor(t, "Back to normal")
-	if getPulse(p.ID).Status != "up" {
-		t.Fatal("after a ping the pulse must be up")
+	if getMonitor(p.ID).Status != "up" {
+		t.Fatal("after a ping the monitor must be up")
 	}
 }
 
 func TestSSLWarnings(t *testing.T) {
 	f := setup(t)
-	p := mustPulse(t, 1, typeSSL, "Site", "example.com", 1440, Meta{})
+	p := mustMonitor(t, 1, typeSSL, "Site", "example.com", 1440, Meta{})
 	now := time.Now()
 	apply := func(days float64, verr error) {
-		cur := getPulse(p.ID)
+		cur := getMonitor(p.ID)
 		applySSLResult(cur, now.Add(time.Duration(days*24*float64(time.Hour))), verr, nil, now)
 		time.Sleep(60 * time.Millisecond)
 	}
 
 	apply(40, nil)
-	if f.count("Renew the certificate in time") != 0 || getPulse(p.ID).Status != "up" {
+	if f.count("Renew the certificate in time") != 0 || getMonitor(p.ID).Status != "up" {
 		t.Fatal("no warnings are expected 40 days before expiry")
 	}
 	apply(13.5, nil)
@@ -639,22 +639,22 @@ func TestSSLWarnings(t *testing.T) {
 
 	apply(-1, errors.New("x509: certificate has expired"))
 	f.waitFor(t, "SSL certificate problem")
-	if getPulse(p.ID).Status != "down" {
+	if getMonitor(p.ID).Status != "down" {
 		t.Fatal("an invalid certificate must set down")
 	}
 	apply(80, nil)
 	f.waitFor(t, "Back to normal")
 
-	cur := getPulse(p.ID)
+	cur := getMonitor(p.ID)
 	applySSLResult(cur, time.Time{}, nil, errors.New("timeout"), now)
-	if g := getPulse(p.ID); g.Status != "up" || g.ConsecutiveFailures != 1 {
+	if g := getMonitor(p.ID); g.Status != "up" || g.ConsecutiveFailures != 1 {
 		t.Fatal("a single connection failure must not alert")
 	}
 }
 
 func TestAgentReports(t *testing.T) {
 	f := setup(t)
-	p := mustPulse(t, 1, typeAgent, "VPS", strings.Repeat("c", 32), 10,
+	p := mustMonitor(t, 1, typeAgent, "VPS", strings.Repeat("c", 32), 10,
 		Meta{ThrCPU: 90, ThrRAM: 90, ThrDisk: 90})
 	srv := httptest.NewServer(newServer(http.NotFoundHandler(), cfg.WebhookURL, ""))
 	defer srv.Close()
@@ -681,34 +681,34 @@ func TestAgentReports(t *testing.T) {
 	if post(p.Target, `{"cpu":10,"ram":20,"disk":30}`) != 429 {
 		t.Fatal("reports that are too frequent must get 429")
 	}
-	if g := getPulse(p.ID); g.Status != "up" || g.Meta.Host != "vps1" || g.Meta.RAM != 20 {
+	if g := getMonitor(p.ID); g.Status != "up" || g.Meta.Host != "vps1" || g.Meta.RAM != 20 {
 		t.Fatalf("metrics were not saved: %+v", g.Meta)
 	}
 
 	bad := agentReport{CPU: 95, RAM: 50, Disk: 97, Host: "vps1"}
-	processAgentReport(getPulse(p.ID), bad)
+	processAgentReport(getMonitor(p.ID), bad)
 	time.Sleep(60 * time.Millisecond)
 	if f.count("Server resources over the limit") != 0 {
 		t.Fatal("the first breach must not alert")
 	}
-	processAgentReport(getPulse(p.ID), bad)
+	processAgentReport(getMonitor(p.ID), bad)
 	f.waitFor(t, "CPU 95% (threshold 90%), disk 97% (threshold 90%)")
 	if f.count("RAM 50%") != 0 {
 		t.Fatal("only exceeded metrics must be listed")
 	}
-	processAgentReport(getPulse(p.ID), agentReport{CPU: 5, RAM: 5, Disk: 50})
+	processAgentReport(getMonitor(p.ID), agentReport{CPU: 5, RAM: 5, Disk: 50})
 	f.waitFor(t, "Back to normal")
 
 	// the agent went silent
-	db.Exec(`UPDATE pulses SET last_success_at = ? WHERE id = ?`, nowMs()-30*60000, p.ID)
+	db.Exec(`UPDATE monitors SET last_success_at = ? WHERE id = ?`, nowMs()-30*60000, p.ID)
 	checkSilent(nowMs())
 	f.waitFor(t, "Server stopped reporting")
-	processAgentReport(getPulse(p.ID), agentReport{CPU: 5, RAM: 5, Disk: 50})
+	processAgentReport(getMonitor(p.ID), agentReport{CPU: 5, RAM: 5, Disk: 50})
 	f.waitCount(t, "Back to normal", 2)
 	if rec := recentChecks(p.ID, 1); len(rec) == 0 || !strings.Contains(renderDetail("en", rec[0].Detail), "Reports resumed") {
 		t.Fatalf("history must note that reports resumed: %+v", rec)
 	}
-	if g := getPulse(p.ID); g.Status != "up" || g.Meta.Silent {
+	if g := getMonitor(p.ID); g.Status != "up" || g.Meta.Silent {
 		t.Fatal("after a report the agent must be up")
 	}
 
@@ -718,7 +718,7 @@ func TestAgentReports(t *testing.T) {
 	}
 	script, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
-	if !strings.Contains(string(script), `BASE_URL="https://pulse.test"`) || strings.Contains(string(script), "@@") {
+	if !strings.Contains(string(script), `BASE_URL="https://monitor.test"`) || strings.Contains(string(script), "@@") {
 		t.Fatal("install.sh did not substitute BASE_URL")
 	}
 	r, _ := http.Get(srv.URL + "/agent/bin/..%2Fsecret")
@@ -732,14 +732,14 @@ func TestAlertsUseOwnerLanguage(t *testing.T) {
 	f := setup(t)
 	upsertUser(1, "")
 	setLang(1, "ru")
-	p := mustPulse(t, 1, typeHTTP, "Сайт", "http://93.184.216.34", 10, Meta{})
+	p := mustMonitor(t, 1, typeHTTP, "Сайт", "http://93.184.216.34", 10, Meta{})
 	handleFailure(p, det("d.http_status", 503), true)
 	f.waitFor(t, "Сайт недоступен")
 	f.waitFor(t, "Сервер вернул HTTP 503.")
 
 	upsertUser(2, "")
 	setLang(2, "de")
-	q := mustPulse(t, 2, typeHTTP, "Seite", "http://93.184.216.34", 10, Meta{})
+	q := mustMonitor(t, 2, typeHTTP, "Seite", "http://93.184.216.34", 10, Meta{})
 	handleFailure(q, det("d.timeout", 10), true)
 	f.waitFor(t, "Website nicht erreichbar")
 	f.waitFor(t, "Keine Antwort innerhalb von 10 s.")
@@ -754,7 +754,7 @@ func TestPremiumPayment(t *testing.T) {
 	f := setup(t)
 	upsertUser(1, "")
 	say(1, "/alert_chats -100123456")
-	f.waitFor(t, "available on the Premium plan")
+	f.waitFor(t, "Premium forwards alerts to other chats")
 
 	msg := &models.Message{From: &models.User{ID: 1}, Chat: models.Chat{ID: 1, Type: models.ChatTypePrivate},
 		SuccessfulPayment: &models.SuccessfulPayment{TelegramPaymentChargeID: "ch1", TotalAmount: premiumPriceStars, Currency: "XTR"}}
@@ -776,7 +776,7 @@ func TestPremiumPayment(t *testing.T) {
 
 	// the alert goes to the main chat and to the additional chats
 	setExtraChats(1, []string{"-100123456"})
-	p := mustPulse(t, 1, typeHTTP, "S", "http://93.184.216.34", 1, Meta{})
+	p := mustMonitor(t, 1, typeHTTP, "S", "http://93.184.216.34", 1, Meta{})
 	handleFailure(p, det("d.http_status", 500), true)
 	f.waitFor(t, "Website is down")
 	time.Sleep(100 * time.Millisecond)
@@ -806,14 +806,14 @@ func TestPaymentsDisabledWithoutSupportContact(t *testing.T) {
 	say(1, "/paysupport")
 	f.waitFor(t, "Payment is currently disabled")
 	say(1, "/menu")
-	f.waitFor(t, "PulseCheck")
+	f.waitFor(t, "UptimeAnt")
 	press(1, "prem")
 	f.waitCount(t, "currently unavailable", 2)
 	for range 5 {
 		say(1, "/add_heartbeat Task 60")
 	}
 	say(1, "/add_heartbeat Extra 60")
-	f.waitFor(t, "The free plan limit of 5 pulses has been reached.")
+	f.waitFor(t, "The free plan limit of 5 monitors has been reached.")
 	if f.count("subscribe to Premium") != 0 {
 		t.Fatalf("Premium must not be promoted while payments are disabled: %q", f.texts())
 	}
@@ -865,18 +865,18 @@ func TestHTTPCheck(t *testing.T) {
 
 func TestHTTPFailureThreshold(t *testing.T) {
 	f := setup(t)
-	p := mustPulse(t, 1, typeHTTP, "Site", "http://93.184.216.34", 10, Meta{})
-	handleFailure(getPulse(p.ID), det("d.http_status", 500), false)
+	p := mustMonitor(t, 1, typeHTTP, "Site", "http://93.184.216.34", 10, Meta{})
+	handleFailure(getMonitor(p.ID), det("d.http_status", 500), false)
 	time.Sleep(60 * time.Millisecond)
 	if f.count("Website is down") != 0 {
 		t.Fatal("a single failure must not alert")
 	}
-	if httpEvery(getPulse(p.ID), nowMs()) != time.Duration(retryMinutes)*time.Minute {
+	if httpEvery(getMonitor(p.ID), nowMs()) != time.Duration(retryMinutes)*time.Minute {
 		t.Fatal("after the first failure the recheck must be quick")
 	}
-	handleFailure(getPulse(p.ID), det("d.http_status", 500), false)
+	handleFailure(getMonitor(p.ID), det("d.http_status", 500), false)
 	f.waitFor(t, "Website is down")
-	handleSuccess(getPulse(p.ID), det("d.http_ok", 12))
+	handleSuccess(getMonitor(p.ID), det("d.http_ok", 12))
 	f.waitFor(t, "Back to normal")
 }
 
@@ -979,16 +979,16 @@ func TestRefunds(t *testing.T) {
 	say(99, "/refund nope")
 	f.waitFor(t, "Payment not found")
 	say(99, "/refund chA")
-	f.waitFor(t, "Refunded 150 Stars to user 1")
+	f.waitFor(t, "Refunded 100 Stars to user 1")
 	if got := getUser(1).PremiumUntil; got != two-int64(premiumDays)*86400000 || !getUser(1).Premium() {
 		t.Fatalf("one refunded payment must shorten Premium by %d days, got %d vs %d", premiumDays, got, two)
 	}
-	f.waitFor(t, "Платеж на 150 Stars возвращен")
+	f.waitFor(t, "Платеж на 100 Stars возвращен")
 	say(99, "/refund chA")
 	f.waitFor(t, "already been refunded")
 
 	say(99, "/refund chB") // the second refund ends Premium completely
-	f.waitCount(t, "Refunded 150 Stars to user 1", 2)
+	f.waitCount(t, "Refunded 100 Stars to user 1", 2)
 	if u := getUser(1); u.Premium() || u.PremiumUntil != 0 {
 		t.Fatalf("Premium must end after refunding every payment: %+v", u)
 	}

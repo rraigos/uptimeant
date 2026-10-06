@@ -50,13 +50,13 @@ func (c *uctx) show(s screen) {
 // ---- dialog state (text typed after a button press) ----
 
 type wizard struct {
-	kind    string // http, hb, ssl, ag, thr, chats
-	step    int
-	name    string
-	back    string // where the Cancel button returns to
-	pulseID int64
-	metric  string
-	expires time.Time
+	kind      string // http, hb, ssl, ag, thr, chats
+	step      int
+	name      string
+	back      string // where the Cancel button returns to
+	monitorID int64
+	metric    string
+	expires   time.Time
 }
 
 var (
@@ -130,7 +130,7 @@ func (c *uctx) handleWizardText(w *wizard, text string) {
 	switch {
 	case w.kind == "thr":
 		v, err := strconv.Atoi(text)
-		p := getOwnPulse(w.pulseID, c.userID)
+		p := getOwnMonitor(w.monitorID, c.userID)
 		if p == nil {
 			clearWizard(c.userID)
 			c.text(c.t("err.notfound"))
@@ -151,7 +151,7 @@ func (c *uctx) handleWizardText(w *wizard, text string) {
 		}
 		saveMeta(p.ID, m)
 		clearWizard(c.userID)
-		c.sendScreen(thresholdsScreen(c.l(), getPulse(p.ID)))
+		c.sendScreen(thresholdsScreen(c.l(), getMonitor(p.ID)))
 	case w.kind == "chats":
 		clearWizard(c.userID)
 		c.text(applyAlertChats(c, text))
@@ -172,7 +172,7 @@ func (c *uctx) handleWizardText(w *wizard, text string) {
 		}
 		c.finishInterval(w, n, false)
 	default:
-		var p *Pulse
+		var p *Monitor
 		var errText string
 		if w.kind == "http" {
 			p, errText = createHTTP(c.user, w.name, text)
@@ -189,7 +189,7 @@ func (c *uctx) handleWizardText(w *wizard, text string) {
 }
 
 func (c *uctx) finishInterval(w *wizard, n int, edit bool) {
-	var p *Pulse
+	var p *Monitor
 	var errText string
 	if w.kind == "hb" {
 		p, errText = createHeartbeat(c.user, w.name, n)
@@ -213,12 +213,12 @@ func (c *uctx) finishInterval(w *wizard, n int, edit bool) {
 	out(createdScreen(c.l(), p))
 }
 
-// ---- pulse creation (shared by buttons and commands) ----
+// ---- monitor creation (shared by buttons and commands) ----
 
-func overLimit(u *User) bool { return !u.Premium() && countPulses(u.ID) >= freeMaxPulses }
+func overLimit(u *User) bool { return !u.Premium() && countMonitors(u.ID) >= freeMaxMonitors }
 
 func limitText(l Lang, u *User) string {
-	t := tr(l, "err.limit", freeMaxPulses)
+	t := tr(l, "err.limit", freeMaxMonitors)
 	if paymentsEnabled() {
 		t += tr(l, "err.limit_upsell")
 	}
@@ -258,7 +258,7 @@ func saveFailed(l Lang, what string, err error) string {
 	return tr(l, "err.save")
 }
 
-func createHTTP(u *User, name, target string) (*Pulse, string) {
+func createHTTP(u *User, name, target string) (*Monitor, string) {
 	l := u.L()
 	if len(target) > 2000 {
 		return nil, tr(l, "err.url_long")
@@ -269,7 +269,7 @@ func createHTTP(u *User, name, target string) (*Pulse, string) {
 	if err := checkPublicURL(target); err != nil {
 		return nil, tr(l, "err.addr", tr(l, err.Error()))
 	}
-	p, err := addPulse(u.ID, typeHTTP, name, target, httpInterval(u), Meta{})
+	p, err := addMonitor(u.ID, typeHTTP, name, target, httpInterval(u), Meta{})
 	if err != nil {
 		return nil, saveFailed(l, "add http", err)
 	}
@@ -277,7 +277,7 @@ func createHTTP(u *User, name, target string) (*Pulse, string) {
 	return p, ""
 }
 
-func createHeartbeat(u *User, name string, interval int) (*Pulse, string) {
+func createHeartbeat(u *User, name string, interval int) (*Monitor, string) {
 	l := u.L()
 	if overLimit(u) {
 		return nil, limitText(l, u)
@@ -285,7 +285,7 @@ func createHeartbeat(u *User, name string, interval int) (*Pulse, string) {
 	if msg := intervalError(l, u, interval); msg != "" {
 		return nil, msg
 	}
-	p, err := addPulse(u.ID, typeHeartbeat, name, newToken(), interval, Meta{})
+	p, err := addMonitor(u.ID, typeHeartbeat, name, newToken(), interval, Meta{})
 	if err != nil {
 		return nil, saveFailed(l, "add heartbeat", err)
 	}
@@ -293,7 +293,7 @@ func createHeartbeat(u *User, name string, interval int) (*Pulse, string) {
 	return p, ""
 }
 
-func createSSL(u *User, name, input string) (*Pulse, string) {
+func createSSL(u *User, name, input string) (*Monitor, string) {
 	l := u.L()
 	host, port, err := parseSSLTarget(input)
 	if err != nil {
@@ -305,7 +305,7 @@ func createSSL(u *User, name, input string) (*Pulse, string) {
 	if err := checkPublicHost(host); err != nil {
 		return nil, tr(l, "err.domain", tr(l, err.Error()))
 	}
-	p, err := addPulse(u.ID, typeSSL, name, sslTarget(host, port), int(sslCheckEvery/time.Minute), Meta{})
+	p, err := addMonitor(u.ID, typeSSL, name, sslTarget(host, port), int(sslCheckEvery/time.Minute), Meta{})
 	if err != nil {
 		return nil, saveFailed(l, "add ssl", err)
 	}
@@ -313,7 +313,7 @@ func createSSL(u *User, name, input string) (*Pulse, string) {
 	return p, ""
 }
 
-func createAgent(u *User, name string, interval int) (*Pulse, string) {
+func createAgent(u *User, name string, interval int) (*Monitor, string) {
 	l := u.L()
 	if overLimit(u) {
 		return nil, limitText(l, u)
@@ -321,7 +321,7 @@ func createAgent(u *User, name string, interval int) (*Pulse, string) {
 	if msg := intervalError(l, u, interval); msg != "" {
 		return nil, msg
 	}
-	p, err := addPulse(u.ID, typeAgent, name, newToken(), interval,
+	p, err := addMonitor(u.ID, typeAgent, name, newToken(), interval,
 		Meta{ThrCPU: defaultThreshold, ThrRAM: defaultThreshold, ThrDisk: defaultThreshold})
 	if err != nil {
 		return nil, saveFailed(l, "add agent", err)
@@ -330,9 +330,9 @@ func createAgent(u *User, name string, interval int) (*Pulse, string) {
 	return p, ""
 }
 
-func pingURL(p *Pulse) string { return cfg.WebhookURL + "/ping/" + p.Target }
+func pingURL(p *Monitor) string { return cfg.WebhookURL + "/ping/" + p.Target }
 
-func installCmd(p *Pulse) string {
+func installCmd(p *Monitor) string {
 	return fmt.Sprintf("curl -fsSL %s/agent/install.sh | sudo sh -s -- %s %d", cfg.WebhookURL, p.Target, p.IntervalMinutes)
 }
 
@@ -444,7 +444,7 @@ func lastOf(f []string) string {
 
 // ---- commands ----
 
-func (c *uctx) finishCreate(p *Pulse, errText string) {
+func (c *uctx) finishCreate(p *Monitor, errText string) {
 	if errText != "" {
 		c.text(errText)
 		return
@@ -505,7 +505,7 @@ func cmdThresholds(c *uctx) {
 	if len(f) > 0 {
 		id, _ = parseID(f[0])
 	}
-	p := getOwnPulse(id, c.userID)
+	p := getOwnMonitor(id, c.userID)
 	if p == nil || p.Type != typeAgent {
 		c.text(c.t("use.thr"))
 		return
@@ -534,7 +534,7 @@ func cmdThresholds(c *uctx) {
 	if len(f) > 1 {
 		saveMeta(p.ID, m)
 	}
-	c.sendScreen(thresholdsScreen(c.l(), getPulse(p.ID)))
+	c.sendScreen(thresholdsScreen(c.l(), getMonitor(p.ID)))
 }
 
 func cmdStatus(c *uctx) {
@@ -543,7 +543,7 @@ func cmdStatus(c *uctx) {
 		c.text(c.t("use.status"))
 		return
 	}
-	p := getOwnPulse(id, c.userID)
+	p := getOwnMonitor(id, c.userID)
 	if p == nil {
 		c.text(c.t("err.notfound"))
 		return
@@ -557,7 +557,7 @@ func cmdRemove(c *uctx) {
 		c.text(c.t("use.remove"))
 		return
 	}
-	p := getOwnPulse(id, c.userID)
+	p := getOwnMonitor(id, c.userID)
 	if p == nil {
 		c.text(c.t("err.notfound"))
 		return
@@ -580,7 +580,7 @@ func cmdPremium(c *uctx) {
 func sendInvoice(c *uctx) {
 	_, err := tg.SendInvoice(c.ctx, &bot.SendInvoiceParams{
 		ChatID:      c.chatID,
-		Title:       "PulseCheck Premium",
+		Title:       "UptimeAnt Premium",
 		Description: c.t("invoice.desc", premiumDays, historyDays),
 		Payload:     fmt.Sprintf("premium:%d", c.userID),
 		Currency:    "XTR",
@@ -768,9 +768,9 @@ func (c *uctx) navigate(d string) {
 	if len(parts) > 1 {
 		id, _ = strconv.ParseInt(parts[1], 10, 64)
 	}
-	var p *Pulse
+	var p *Monitor
 	if id > 0 {
-		p = getOwnPulse(id, c.userID)
+		p = getOwnMonitor(id, c.userID)
 	}
 	l := c.l()
 
@@ -828,11 +828,11 @@ func (c *uctx) navigate(d string) {
 			c.show(simpleScreen(c.t("err.notfound"), line(ib(l, "btn.list", "l")), menuRow(l)))
 			return
 		}
-		c.pulseAction(parts, p)
+		c.monitorAction(parts, p)
 	}
 }
 
-func (c *uctx) pulseAction(parts []string, p *Pulse) {
+func (c *uctx) monitorAction(parts []string, p *Monitor) {
 	l := c.l()
 	switch parts[0] {
 	case "p":
@@ -842,7 +842,7 @@ func (c *uctx) pulseAction(parts []string, p *Pulse) {
 	case "del":
 		c.show(deleteScreen(l, p))
 	case "delok":
-		deletePulse(p.ID, c.userID)
+		deleteMonitor(p.ID, c.userID)
 		c.show(simpleScreen(c.t("del.done"), line(ib(l, "btn.list", "l")), menuRow(l)))
 	case "inst":
 		if p.Type == typeAgent {
@@ -859,7 +859,7 @@ func (c *uctx) pulseAction(parts []string, p *Pulse) {
 		if parts[2] != "cpu" && parts[2] != "ram" && parts[2] != "disk" {
 			return
 		}
-		w := &wizard{kind: "thr", step: 1, metric: parts[2], pulseID: p.ID, back: fmt.Sprintf("thr:%d", p.ID)}
+		w := &wizard{kind: "thr", step: 1, metric: parts[2], monitorID: p.ID, back: fmt.Sprintf("thr:%d", p.ID)}
 		setWizard(c.userID, w)
 		c.show(wizardPrompt(c.user, w))
 	}

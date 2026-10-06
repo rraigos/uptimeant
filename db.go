@@ -27,7 +27,7 @@ CREATE TABLE IF NOT EXISTS users (
   extra_alert_chat_ids TEXT NOT NULL DEFAULT '',
   lang TEXT NOT NULL DEFAULT ''
 );
-CREATE TABLE IF NOT EXISTS pulses (
+CREATE TABLE IF NOT EXISTS monitors (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   type TEXT NOT NULL CHECK (type IN ('http', 'heartbeat', 'ssl', 'agent')),
@@ -41,16 +41,16 @@ CREATE TABLE IF NOT EXISTS pulses (
   created_at INTEGER NOT NULL,
   meta TEXT NOT NULL DEFAULT '{}'
 );
-CREATE INDEX IF NOT EXISTS idx_pulses_user ON pulses(user_id);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_pulses_token ON pulses(target) WHERE type IN ('heartbeat', 'agent');
+CREATE INDEX IF NOT EXISTS idx_monitors_user ON monitors(user_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_monitors_token ON monitors(target) WHERE type IN ('heartbeat', 'agent');
 CREATE TABLE IF NOT EXISTS checks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  pulse_id INTEGER NOT NULL REFERENCES pulses(id) ON DELETE CASCADE,
+  monitor_id INTEGER NOT NULL REFERENCES monitors(id) ON DELETE CASCADE,
   at INTEGER NOT NULL,
   ok INTEGER NOT NULL,
   detail TEXT NOT NULL DEFAULT ''
 );
-CREATE INDEX IF NOT EXISTS idx_checks_pulse_at ON checks(pulse_id, at);
+CREATE INDEX IF NOT EXISTS idx_checks_monitor_at ON checks(monitor_id, at);
 CREATE TABLE IF NOT EXISTS payments (
   charge_id TEXT PRIMARY KEY,
   user_id INTEGER NOT NULL,
@@ -85,7 +85,7 @@ func (u *User) L() Lang {
 	return l
 }
 
-// Meta — extra pulse fields, stored in pulses.meta as JSON (no separate columns needed).
+// Meta — extra monitor fields, stored in monitors.meta as JSON (no separate columns needed).
 type Meta struct {
 	// agent: thresholds in percent and the last report
 	ThrCPU   float64 `json:"thr_cpu,omitempty"`
@@ -102,7 +102,7 @@ type Meta struct {
 	AlertedLevel int   `json:"alerted_level,omitempty"`
 }
 
-type Pulse struct {
+type Monitor struct {
 	ID                  int64
 	UserID              int64
 	Type                string
@@ -150,14 +150,14 @@ func openDB(path string) error {
 	return nil
 }
 
-const selPulse = `SELECT p.id, p.user_id, p.type, p.name, p.target, p.interval_minutes, p.status,
+const selMonitor = `SELECT p.id, p.user_id, p.type, p.name, p.target, p.interval_minutes, p.status,
   p.last_check_at, p.last_success_at, p.consecutive_failures, p.created_at, p.meta, COALESCE(u.premium_until, 0)
-  FROM pulses p JOIN users u ON u.id = p.user_id `
+  FROM monitors p JOIN users u ON u.id = p.user_id `
 
 type scanner interface{ Scan(...any) error }
 
-func scanPulse(s scanner) (*Pulse, error) {
-	p := &Pulse{}
+func scanMonitor(s scanner) (*Monitor, error) {
+	p := &Monitor{}
 	var meta string
 	err := s.Scan(&p.ID, &p.UserID, &p.Type, &p.Name, &p.Target, &p.IntervalMinutes, &p.Status,
 		&p.LastCheckAt, &p.LastSuccessAt, &p.ConsecutiveFailures, &p.CreatedAt, &meta, &p.PremiumUntil)
@@ -168,18 +168,18 @@ func scanPulse(s scanner) (*Pulse, error) {
 	return p, nil
 }
 
-func queryPulses(where string, args ...any) []*Pulse {
-	rows, err := db.Query(selPulse+where, args...)
+func queryMonitors(where string, args ...any) []*Monitor {
+	rows, err := db.Query(selMonitor+where, args...)
 	if err != nil {
-		logErr("query pulses", err)
+		logErr("query monitors", err)
 		return nil
 	}
 	defer rows.Close()
-	var out []*Pulse
+	var out []*Monitor
 	for rows.Next() {
-		p, err := scanPulse(rows)
+		p, err := scanMonitor(rows)
 		if err != nil {
-			logErr("scan pulse", err)
+			logErr("scan monitor", err)
 			continue
 		}
 		out = append(out, p)
@@ -187,12 +187,12 @@ func queryPulses(where string, args ...any) []*Pulse {
 	return out
 }
 
-func queryPulse(where string, args ...any) *Pulse {
-	row := db.QueryRow(selPulse+where, args...)
-	p, err := scanPulse(row)
+func queryMonitor(where string, args ...any) *Monitor {
+	row := db.QueryRow(selMonitor+where, args...)
+	p, err := scanMonitor(row)
 	if err != nil {
 		if !errors.Is(err, sql.ErrNoRows) {
-			logErr("query pulse", err)
+			logErr("query monitor", err)
 		}
 		return nil
 	}
@@ -233,47 +233,47 @@ func setLang(id int64, l Lang) {
 	logErr("set lang", err)
 }
 
-func countPulses(userID int64) int {
+func countMonitors(userID int64) int {
 	var n int
-	logErr("count pulses", db.QueryRow(`SELECT COUNT(*) FROM pulses WHERE user_id = ?`, userID).Scan(&n))
+	logErr("count monitors", db.QueryRow(`SELECT COUNT(*) FROM monitors WHERE user_id = ?`, userID).Scan(&n))
 	return n
 }
 
-func addPulse(userID int64, typ, name, target string, interval int, meta Meta) (*Pulse, error) {
+func addMonitor(userID int64, typ, name, target string, interval int, meta Meta) (*Monitor, error) {
 	m, _ := json.Marshal(meta)
-	res, err := db.Exec(`INSERT INTO pulses (user_id, type, name, target, interval_minutes, created_at, meta)
+	res, err := db.Exec(`INSERT INTO monitors (user_id, type, name, target, interval_minutes, created_at, meta)
 		VALUES (?, ?, ?, ?, ?, ?, ?)`, userID, typ, name, target, interval, nowMs(), string(m))
 	if err != nil {
 		return nil, err
 	}
 	id, _ := res.LastInsertId()
-	return getPulse(id), nil
+	return getMonitor(id), nil
 }
 
-func getPulse(id int64) *Pulse { return queryPulse("WHERE p.id = ?", id) }
+func getMonitor(id int64) *Monitor { return queryMonitor("WHERE p.id = ?", id) }
 
-func getOwnPulse(id, userID int64) *Pulse {
-	return queryPulse("WHERE p.id = ? AND p.user_id = ?", id, userID)
+func getOwnMonitor(id, userID int64) *Monitor {
+	return queryMonitor("WHERE p.id = ? AND p.user_id = ?", id, userID)
 }
 
-func getByToken(token string, types ...string) *Pulse {
-	return queryPulse("WHERE p.target = ? AND p.type IN ('"+strings.Join(types, "','")+"')", token)
+func getByToken(token string, types ...string) *Monitor {
+	return queryMonitor("WHERE p.target = ? AND p.type IN ('"+strings.Join(types, "','")+"')", token)
 }
 
-func listPulses(userID int64) []*Pulse {
-	return queryPulses("WHERE p.user_id = ? ORDER BY p.id", userID)
+func listMonitors(userID int64) []*Monitor {
+	return queryMonitors("WHERE p.user_id = ? ORDER BY p.id", userID)
 }
 
-func pulsesByType(typ string) []*Pulse { return queryPulses("WHERE p.type = ?", typ) }
+func monitorsByType(typ string) []*Monitor { return queryMonitors("WHERE p.type = ?", typ) }
 
-func silentCandidates() []*Pulse {
-	return queryPulses("WHERE p.type IN ('heartbeat', 'agent') AND p.status != 'down'")
+func silentCandidates() []*Monitor {
+	return queryMonitors("WHERE p.type IN ('heartbeat', 'agent') AND p.status != 'down'")
 }
 
-func deletePulse(id, userID int64) bool {
-	res, err := db.Exec(`DELETE FROM pulses WHERE id = ? AND user_id = ?`, id, userID)
+func deleteMonitor(id, userID int64) bool {
+	res, err := db.Exec(`DELETE FROM monitors WHERE id = ? AND user_id = ?`, id, userID)
 	if err != nil {
-		logErr("delete pulse", err)
+		logErr("delete monitor", err)
 		return false
 	}
 	n, _ := res.RowsAffected()
@@ -286,32 +286,32 @@ func setExtraChats(userID int64, ids []string) {
 }
 
 func markSuccess(id, now int64) {
-	_, err := db.Exec(`UPDATE pulses SET status = 'up', consecutive_failures = 0, last_check_at = ?, last_success_at = ? WHERE id = ?`, now, now, id)
+	_, err := db.Exec(`UPDATE monitors SET status = 'up', consecutive_failures = 0, last_check_at = ?, last_success_at = ? WHERE id = ?`, now, now, id)
 	logErr("mark success", err)
 }
 
 func markSeen(id, now int64) {
-	_, err := db.Exec(`UPDATE pulses SET last_check_at = ?, last_success_at = ? WHERE id = ?`, now, now, id)
+	_, err := db.Exec(`UPDATE monitors SET last_check_at = ?, last_success_at = ? WHERE id = ?`, now, now, id)
 	logErr("mark seen", err)
 }
 
 func markFailure(id int64, status string, failures int, now int64) {
-	_, err := db.Exec(`UPDATE pulses SET status = ?, consecutive_failures = ?, last_check_at = ? WHERE id = ?`, status, failures, now, id)
+	_, err := db.Exec(`UPDATE monitors SET status = ?, consecutive_failures = ?, last_check_at = ? WHERE id = ?`, status, failures, now, id)
 	logErr("mark failure", err)
 }
 
 func saveMeta(id int64, m Meta) {
 	b, _ := json.Marshal(m)
-	_, err := db.Exec(`UPDATE pulses SET meta = ? WHERE id = ?`, string(b), id)
+	_, err := db.Exec(`UPDATE monitors SET meta = ? WHERE id = ?`, string(b), id)
 	logErr("save meta", err)
 }
 
-func addCheck(pulseID, at int64, ok bool, detail string) {
+func addCheck(monitorID, at int64, ok bool, detail string) {
 	okInt := 0
 	if ok {
 		okInt = 1
 	}
-	_, err := db.Exec(`INSERT INTO checks (pulse_id, at, ok, detail) VALUES (?, ?, ?, ?)`, pulseID, at, okInt, detail)
+	_, err := db.Exec(`INSERT INTO checks (monitor_id, at, ok, detail) VALUES (?, ?, ?, ?)`, monitorID, at, okInt, detail)
 	logErr("add check", err)
 }
 
@@ -321,8 +321,8 @@ type Check struct {
 	Detail string
 }
 
-func recentChecks(pulseID int64, limit int) []Check {
-	rows, err := db.Query(`SELECT at, ok, detail FROM checks WHERE pulse_id = ? ORDER BY at DESC, id DESC LIMIT ?`, pulseID, limit)
+func recentChecks(monitorID int64, limit int) []Check {
+	rows, err := db.Query(`SELECT at, ok, detail FROM checks WHERE monitor_id = ? ORDER BY at DESC, id DESC LIMIT ?`, monitorID, limit)
 	if err != nil {
 		logErr("recent checks", err)
 		return nil
@@ -346,9 +346,9 @@ type DayStat struct {
 	OK  int
 }
 
-func dailyChecks(pulseID, since, offsetMs int64) []DayStat {
+func dailyChecks(monitorID, since, offsetMs int64) []DayStat {
 	rows, err := db.Query(`SELECT CAST((at + ?) / 86400000 AS INTEGER) AS day, COUNT(*), SUM(ok)
-		FROM checks WHERE pulse_id = ? AND at >= ? GROUP BY day ORDER BY day`, offsetMs, pulseID, since)
+		FROM checks WHERE monitor_id = ? AND at >= ? GROUP BY day ORDER BY day`, offsetMs, monitorID, since)
 	if err != nil {
 		logErr("daily checks", err)
 		return nil
@@ -364,9 +364,9 @@ func dailyChecks(pulseID, since, offsetMs int64) []DayStat {
 	return out
 }
 
-func uptimeSince(pulseID, since int64) (n, ok int) {
+func uptimeSince(monitorID, since int64) (n, ok int) {
 	var sum sql.NullInt64
-	logErr("uptime", db.QueryRow(`SELECT COUNT(*), SUM(ok) FROM checks WHERE pulse_id = ? AND at >= ?`, pulseID, since).Scan(&n, &sum))
+	logErr("uptime", db.QueryRow(`SELECT COUNT(*), SUM(ok) FROM checks WHERE monitor_id = ? AND at >= ?`, monitorID, since).Scan(&n, &sum))
 	return n, int(sum.Int64)
 }
 
@@ -507,7 +507,7 @@ func saveReferral(invitee, referrer int64) {
 	logErr("save referral", err)
 }
 
-// referralStats return how many invitees reached a pulse and the total of credited days.
+// referralStats return how many invitees reached a monitor and the total of credited days.
 func referralStats(referrer int64) (int, int) {
 	var n, days int
 	logErr("referral stats", db.QueryRow(`SELECT COUNT(*), COALESCE(SUM(days), 0) FROM referrals
@@ -515,7 +515,7 @@ func referralStats(referrer int64) (int, int) {
 	return n, days
 }
 
-// creditReferral settles an invite once the invitee has added their first pulse:
+// creditReferral settles an invite once the invitee has added their first monitor:
 // it awards Premium days to the referrer, but never more than referralCapDays accumulated.
 // A second result of 0 means there is nothing to award: no invite, already credited,
 // or the cap has been reached.

@@ -2,7 +2,7 @@
 *.db
 *.db-shm
 *.db-wal
-/pulsecheck
-/pulsecheck.exe
-/agent-dist/pulsecheck-agent-*
+/uptimeant
+/uptimeant.exe
+/agent-dist/uptimeant-agent-*
 /notes/
