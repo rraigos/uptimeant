@@ -237,11 +237,14 @@ func init() {
 		"btn.paysupport":    "Soporte de pagos",
 		"refund.done":       "⭐ Se ha reembolsado su pago de %d Stars. El periodo Premium se ha reducido en consecuencia.",
 		"btn.invite":        "Invitar",
-		"inv.title":         "<b>🎁 Invitar amigos</b>\nEnvía tu enlace personal. Cuando un amigo configure un monitor y siga usando el bot una semana después, recibes %d días de Premium, %d días como máximo en total.",
+		"inv.title":         "<b>🎁 Invitar amigos</b>\nEnvía tu enlace personal. Tu amigo empieza con %d días de Premium por nuestra cuenta, y tú recibes la recompensa cuando sus monitores se comprueben a diario durante %d días. Como máximo %d días de bonificación.",
+		"inv.tiers":         "Recompensa: %d días cuando un amigo mantiene un monitor activo, y %d días si además conecta un cron o un servidor.",
+		"inv.rate":          "Como máximo dos recompensas en %d días.",
+		"inv.welcome":       "🎁 <b>%d días de Premium por nuestra cuenta</b>\nHas llegado por el enlace de un amigo, así que tienes las funciones de pago abiertas durante todo ese tiempo.",
 		"inv.link":          "Tu enlace:\n<code>%s</code>",
 		"inv.stats":         "Amigos con monitor: %d   ⭐ Días de bonificación: %d   Hasta el límite: %d",
-		"inv.pending":       "Esperando la semana: %d",
-		"inv.armed":         "🎁 <b>Un amigo usa UptimeAnt</b>\nAlguien llegó por tu enlace y configuró un monitor. Si sigue activo en %d días, recibes %d días de Premium.",
-		"inv.reward":        "⭐ Un amigo invitado siguió vigilando sus monitores durante una semana: %d días de Premium. Invitaciones pagadas en total: %d.",
+		"inv.pending":       "Sin recompensa todavía: %d",
+		"inv.armed":         "🎁 <b>Un amigo ya está listo</b>\nAlguien llegó por tu enlace y añadió un monitor. Cuando sus monitores se comprueben a diario durante %d días, recibirás tu primera recompensa Premium.",
+		"inv.reward":        "⭐ Los monitores de tu amigo se han comprobado a diario durante una semana: +%d días de Premium. Invitaciones recompensadas en total: %d.",
 	})
 }

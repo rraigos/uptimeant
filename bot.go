@@ -380,7 +380,9 @@ func cmdStart(c *uctx) {
 	// Only a first-time bot visit credits the invite, otherwise the link could be
 	// farmed across one's own old accounts.
 	if ref, ok := parseInvite(c.arg); ok && c.newUser && ref != c.userID && getUser(ref) != nil {
-		saveReferral(c.userID, ref)
+		if acceptInvite(c.userID, ref) {
+			c.text(c.t("inv.welcome", referralWelcomeDays))
+		}
 	}
 	if c.user.Lang == "" {
 		c.sendScreen(langScreen(c.l(), false))

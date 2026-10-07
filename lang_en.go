@@ -237,11 +237,14 @@ func init() {
 		"btn.paysupport":    "Payment support",
 		"refund.done":       "⭐ Your payment of %d Stars has been refunded. The Premium period was shortened accordingly.",
 		"btn.invite":        "Invite",
-		"inv.title":         "<b>🎁 Invite friends</b>\nSend your personal link. When a friend sets up a monitor and is still using the bot a week later, you get %d days of Premium, %d days at most in total.",
+		"inv.title":         "<b>🎁 Invite friends</b>\nSend your personal link. Your friend starts with %d days of Premium on us, and you get rewarded once their monitors have been checked every day for %d days. %d bonus days at most.",
+		"inv.tiers":         "Reward: %d days when a friend keeps a monitor running, %d days if they also connect a cron job or a server.",
+		"inv.rate":          "No more than two rewards in %d days.",
+		"inv.welcome":       "🎁 <b>%d days of Premium on us</b>\nYou arrived through a friend's link, so the paid features are unlocked while the trial lasts.",
 		"inv.link":          "Your link:\n<code>%s</code>",
 		"inv.stats":         "Friends with a monitor: %d   ⭐ Bonus days: %d   Left to the limit: %d",
-		"inv.pending":       "Waiting for the week to pass: %d",
-		"inv.armed":         "🎁 <b>A friend is using UptimeAnt</b>\nSomeone came through your link and set up a monitor. If they are still active in %d days, you get %d days of Premium.",
-		"inv.reward":        "⭐ A friend you invited kept watching their monitors for a week: %d days of Premium. Paid invites in total: %d.",
+		"inv.pending":       "Not yet rewarded: %d",
+		"inv.armed":         "🎁 <b>A friend is set up</b>\nSomeone came through your link and added a monitor. Once their monitors have been checked every day for %d days, you get your first Premium reward.",
+		"inv.reward":        "⭐ Your friend's monitors have been checked every day for a week: +%d days of Premium. Rewarded invites in total: %d.",
 	})
 }

@@ -25,8 +25,7 @@ CREATE TABLE IF NOT EXISTS users (
   is_premium INTEGER NOT NULL DEFAULT 0,
   premium_until INTEGER,
   extra_alert_chat_ids TEXT NOT NULL DEFAULT '',
-  lang TEXT NOT NULL DEFAULT '',
-  last_seen_at INTEGER NOT NULL DEFAULT 0
+  lang TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS monitors (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -71,7 +70,8 @@ CREATE TABLE IF NOT EXISTS referrals (
   referrer INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   days INTEGER NOT NULL DEFAULT 0,
   credited_at INTEGER NOT NULL DEFAULT 0,
-  armed_at INTEGER NOT NULL DEFAULT 0
+  armed_at INTEGER NOT NULL DEFAULT 0,
+  welcome_at INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_referrals_referrer ON referrals(referrer);`
 
@@ -150,9 +150,9 @@ func openDB(path string) error {
 	// Columns added after the first release. The "duplicate column" error is expected.
 	for _, stmt := range []string{
 		`ALTER TABLE users ADD COLUMN lang TEXT NOT NULL DEFAULT ''`,
-		`ALTER TABLE users ADD COLUMN last_seen_at INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE payments ADD COLUMN refunded_at INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE referrals ADD COLUMN armed_at INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE referrals ADD COLUMN welcome_at INTEGER NOT NULL DEFAULT 0`,
 	} {
 		if _, aerr := db.Exec(stmt); aerr != nil && !strings.Contains(aerr.Error(), "duplicate column") {
 			return aerr
@@ -225,24 +225,18 @@ func queryMonitor(where string, args ...any) *Monitor {
 	return p
 }
 
-// upsertUser creates the user, stores the language from telegramLang and stamps this interaction.
-// The second result is true when the user did not exist yet: it decides whether an invite counts,
-// and the stamp is how the referral program tells a friend who stayed from an account opened once.
-// An existing user's language is never overwritten once they have chosen it themselves.
+// upsertUser creates the user, storing the language from telegramLang right away.
+// The second result is true when the user did not exist yet: it decides whether an invite counts.
+// An existing user's language is not overwritten once they have chosen it themselves.
 func upsertUser(id int64, lang string) bool {
-	now := nowMs()
-	res, err := db.Exec(`INSERT OR IGNORE INTO users (id, chat_id, lang, last_seen_at) VALUES (?, ?, ?, ?)`, id, id, lang, now)
+	res, err := db.Exec(`INSERT OR IGNORE INTO users (id, chat_id, lang) VALUES (?, ?, ?)`, id, id, lang)
 	logErr("upsert user", err)
-	if created, _ := res.RowsAffected(); created > 0 {
-		return true
+	created, _ := res.RowsAffected()
+	if created == 0 && lang != "" {
+		_, err = db.Exec(`UPDATE users SET lang = ? WHERE id = ? AND lang = ''`, lang, id)
+		logErr("auto lang", err)
 	}
-	if lang != "" {
-		_, err = db.Exec(`UPDATE users SET last_seen_at = ?, lang = CASE WHEN lang = '' THEN ? ELSE lang END WHERE id = ?`, now, lang, id)
-	} else {
-		_, err = db.Exec(`UPDATE users SET last_seen_at = ? WHERE id = ?`, now, id)
-	}
-	logErr("last seen", err)
-	return false
+	return created > 0
 }
 
 func getUser(id int64) *User {
@@ -538,11 +532,63 @@ func recordPayment(chargeID string, userID int64, stars int) (int64, error) {
 
 // ---- referral program ----
 
-// saveReferral records that a user arrived through someone's link.
-// Repeat rows are ignored: only the first invite counts.
-func saveReferral(invitee, referrer int64) {
-	_, err := db.Exec(`INSERT OR IGNORE INTO referrals (invitee, referrer) VALUES (?, ?)`, invitee, referrer)
-	logErr("save referral", err)
+// acceptInvite records a first-time visitor who came through someone's link and unlocks the
+// friend's own Premium trial. The inviter is paid later, by settleReferrals, once it is clear the
+// friend really runs monitors. The result is false when nothing was recorded.
+func acceptInvite(invitee, referrer int64) bool {
+	tx, err := db.Begin()
+	if err != nil {
+		logErr("accept invite", err)
+		return false
+	}
+	defer tx.Rollback()
+	now := nowMs()
+	res, err := tx.Exec(`INSERT OR IGNORE INTO referrals (invitee, referrer, welcome_at) VALUES (?, ?, ?)`,
+		invitee, referrer, now)
+	if err != nil {
+		logErr("accept invite", err)
+		return false
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return false // this invitee was already invited
+	}
+	var cur sql.NullInt64
+	if err = tx.QueryRow(`SELECT premium_until FROM users WHERE id = ?`, invitee).Scan(&cur); err != nil {
+		logErr("welcome bonus", err)
+		return false
+	}
+	until := max(now, cur.Int64) + int64(referralWelcomeDays)*86400000
+	if _, err = tx.Exec(`UPDATE users SET is_premium = 1, premium_until = ? WHERE id = ?`, until, invitee); err != nil {
+		logErr("welcome bonus", err)
+		return false
+	}
+	if err = tx.Commit(); err != nil {
+		logErr("welcome bonus", err)
+		return false
+	}
+	return true
+}
+
+// referralActivity answers the two questions a payout depends on: how many days since `since`
+// the friend's monitors were actually checked, and whether one of their own machines ever reached
+// the bot. Deleted monitors take their history with them, so only a live setup scores.
+func referralActivity(userID, since int64) (lived int, wired int) {
+	err := db.QueryRow(`SELECT
+	  (SELECT COUNT(*) FROM (
+	     SELECT d.day FROM daily_stats d JOIN monitors m ON m.id = d.monitor_id
+	       WHERE m.user_id = ? AND d.day >= ?
+	     UNION
+	     SELECT (c.at + ?) / 86400000 FROM checks c JOIN monitors m ON m.id = c.monitor_id
+	       WHERE m.user_id = ? AND c.at >= ?
+	   )
+	 ),
+	  (SELECT COUNT(*) FROM monitors
+	     WHERE user_id = ? AND type IN ('heartbeat', 'agent') AND last_success_at >= ?)`,
+		userID, checkDay(since), tzOffsetMs(), userID, since, userID, since).Scan(&lived, &wired)
+	if err != nil {
+		logErr("referral activity", err)
+	}
+	return lived, wired
 }
 
 // referralStats return how many invites paid out and the total of credited days.
@@ -584,10 +630,10 @@ type referralAward struct {
 	Days     int
 }
 
-// settleReferrals pays the invites whose trial week has passed. A friend qualifies by still
-// having a monitor and by coming back to the bot on their own from referralReturnDays on: a site
-// that keeps answering 200 without its owner is not retention. An invite that never got there is
-// closed at referralExpiryDays and can never be armed again.
+// settleReferrals pays the invites whose trial week has passed. A friend who kept monitors
+// running every day of that week earns referralBaseDays, and referralRewardDays once their own
+// cron job or server has checked in too. An invite that never got there is closed at
+// referralExpiryDays and can never be armed again.
 func settleReferrals(now int64) []referralAward {
 	var due []int64
 	rows, err := db.Query(`SELECT invitee FROM referrals WHERE credited_at = 0 AND armed_at != 0 AND armed_at <= ?`,
@@ -608,38 +654,45 @@ func settleReferrals(now int64) []referralAward {
 
 	var out []referralAward
 	for _, invitee := range due {
-		var armed, seen int64
-		var monitors int
-		err := db.QueryRow(`SELECT r.armed_at, u.last_seen_at,
-			  (SELECT COUNT(*) FROM monitors WHERE user_id = r.invitee)
-			  FROM referrals r JOIN users u ON u.id = r.invitee
-			  WHERE r.invitee = ? AND r.credited_at = 0`, invitee).Scan(&armed, &seen, &monitors)
-		if err != nil {
+		var armed int64
+		if err := db.QueryRow(`SELECT armed_at FROM referrals WHERE invitee = ? AND credited_at = 0`,
+			invitee).Scan(&armed); err != nil {
 			if !errors.Is(err, sql.ErrNoRows) {
 				logErr("settle referral", err)
 			}
 			continue
 		}
-		switch {
-		case monitors > 0 && seen >= armed+int64(referralReturnDays)*86400000:
-			referrer, days, cerr := creditInvite(invitee, now)
-			if cerr != nil {
-				logErr("credit referral", cerr)
-			} else if days > 0 {
-				out = append(out, referralAward{referrer, days})
+		lived, wired := referralActivity(invitee, armed)
+		days := 0
+		if lived >= referralWaitDays {
+			days = referralBaseDays
+			if wired > 0 {
+				days = referralRewardDays
 			}
-		case now >= armed+int64(referralExpiryDays)*86400000:
-			if _, verr := db.Exec(`UPDATE referrals SET credited_at = -1 WHERE invitee = ?`, invitee); verr != nil {
-				logErr("void referral", verr)
+		}
+		if days == 0 {
+			if now >= armed+int64(referralExpiryDays)*86400000 {
+				if _, verr := db.Exec(`UPDATE referrals SET credited_at = -1 WHERE invitee = ?`, invitee); verr != nil {
+					logErr("void referral", verr)
+				}
 			}
+			continue
+		}
+		referrer, paid, cerr := creditInvite(invitee, days, now)
+		if cerr != nil {
+			logErr("credit referral", cerr)
+		} else if paid > 0 {
+			out = append(out, referralAward{referrer, paid})
 		}
 	}
 	return out
 }
 
-// creditInvite pays one qualified invite, never past referralCapDays accumulated for the referrer.
-// A second result of 0 means the cap was already reached: the invite is still closed out.
-func creditInvite(invitee, now int64) (int64, int, error) {
+// creditInvite closes out one qualified invite. Two caps limit the program: referralCapDays in
+// total and referralPayoutsPerWindow per referralWindowDays, so a farm of accounts cannot drain
+// it at once. Nothing left to give closes the invite with no days; a pace cap leaves it pending
+// for the next tick.
+func creditInvite(invitee int64, want int, now int64) (int64, int, error) {
 	tx, err := db.Begin()
 	if err != nil {
 		return 0, 0, err
@@ -649,19 +702,24 @@ func creditInvite(invitee, now int64) (int64, int, error) {
 	if err := tx.QueryRow(`SELECT referrer FROM referrals WHERE invitee = ? AND credited_at = 0`, invitee).Scan(&referrer); err != nil {
 		return 0, 0, nil // no invite, or it is already settled
 	}
-	var done int
-	if err := tx.QueryRow(`SELECT COALESCE(SUM(days), 0) FROM referrals WHERE referrer = ? AND credited_at > 0`, referrer).Scan(&done); err != nil {
+	var done, recent int
+	if err := tx.QueryRow(`SELECT COALESCE(SUM(days), 0),
+		COALESCE(SUM(CASE WHEN credited_at >= ? THEN 1 ELSE 0 END), 0) FROM referrals
+		WHERE referrer = ? AND credited_at > 0`, now-int64(referralWindowDays)*86400000, referrer).Scan(&done, &recent); err != nil {
 		return 0, 0, err
 	}
-	days := min(referralRewardDays, referralCapDays-done)
-	if days < 0 {
-		days = 0
+	days := min(want, referralCapDays-done)
+	if days <= 0 {
+		if _, err := tx.Exec(`UPDATE referrals SET days = 0, credited_at = ? WHERE invitee = ?`, now, invitee); err != nil {
+			return 0, 0, err
+		}
+		return referrer, 0, tx.Commit()
+	}
+	if recent >= referralPayoutsPerWindow {
+		return referrer, 0, nil // wait for the pace cap to make room
 	}
 	if _, err := tx.Exec(`UPDATE referrals SET days = ?, credited_at = ? WHERE invitee = ?`, days, now, invitee); err != nil {
 		return 0, 0, err
-	}
-	if days == 0 {
-		return referrer, 0, tx.Commit()
 	}
 	var cur sql.NullInt64
 	if err := tx.QueryRow(`SELECT premium_until FROM users WHERE id = ?`, referrer).Scan(&cur); err != nil {

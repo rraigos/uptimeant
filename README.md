@@ -124,19 +124,20 @@ name comes from `GetMe` at startup and the signature is a truncated HMAC of the 
 the bot token, so a link to someone else's account cannot be invented and no invite code is
 stored anywhere.
 
-An invite counts only if all of these hold:
+An invite is recorded when a first-time visitor arrives through the link (spamming your own old
+accounts earns nothing) and inviter and invitee are not the same account. That friend starts with
+7 days of Premium on the bot (`referralWelcomeDays`), so the offer is not only a referral fee.
 
-- the user entered the bot through the link for the first time (spamming your own old accounts earns nothing);
-- inviter and invitee are not the same account;
-- the invitee added at least one monitor;
-- a week after that first monitor the invitee still has one and has opened the bot again since day
-  three — a website that keeps answering `200` for somebody who left is not retention.
-
-The inviter gets 7 days of Premium per such friend, up to 90 accumulated days (`referralRewardDays`
-and `referralCapDays` in `config.go`). The trial week is started by the invitee's first monitor and
-pays out when `settleReferrals` next runs; an invite that never qualified is closed 14 days later
-and cannot be re-armed. Each invitee is credited exactly once, and granted days are appended to the
-current `premium_until` rather than started from today.
+The inviter is paid `referralWaitDays` after the friend adds their first monitor, and only if the
+friend's monitors were really checked on every one of those days — a website that keeps answering
+`200` for somebody who left is not retention, and deleted monitors take their history with them.
+The reward is `referralBaseDays` for that week of live checks, `referralRewardDays` once the friend
+has also wired in their own machine, which means a cron ping or an agent report reached the bot.
+Three caps keep the program affordable: `referralPayoutsPerWindow` payouts per
+`referralWindowDays` (an invite that hits the pace cap waits for the next settlement run instead of
+being lost), `referralCapDays` accumulated in total, and an invite that never qualifies is closed
+`referralExpiryDays` after it was armed and cannot be armed again. Each invitee is credited exactly
+once, and granted days are appended to the current `premium_until` rather than started from today.
 
 ## Payments and refunds
 

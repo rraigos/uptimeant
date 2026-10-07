@@ -52,15 +52,21 @@ const (
 	defaultThreshold = 90.0
 	minReportGap     = 10 * time.Second
 
-	// Referral program: Premium days per invite and the cap on accumulated days. An invite pays
-	// out referralWaitDays after the friend's first monitor, and only if that friend came back
-	// to the bot on their own (from referralReturnDays on) and still has a monitor. Unqualified
-	// invites are dropped at referralExpiryDays.
-	referralRewardDays = 7
-	referralCapDays    = 90
-	referralWaitDays   = 7
-	referralReturnDays = 3
-	referralExpiryDays = 14
+	// Referral program, two sides. A friend arriving through a link starts with
+	// referralWelcomeDays of Premium on us. The inviter is paid referralWaitDays after that
+	// friend's first monitor: referralBaseDays when the friend's monitors were checked every day
+	// of the week, referralRewardDays when the friend also wired in their own machine (a cron
+	// ping or an agent report). Referrals that never qualify are dropped at referralExpiryDays,
+	// and no referrer gets more than referralPayoutsPerWindow rewards per referralWindowDays or
+	// more than referralCapDays in total.
+	referralWelcomeDays      = 7
+	referralBaseDays         = 3
+	referralRewardDays       = 7
+	referralWaitDays         = 7
+	referralExpiryDays       = 14
+	referralCapDays          = 90
+	referralWindowDays       = 7
+	referralPayoutsPerWindow = 2
 )
 
 type Config struct {

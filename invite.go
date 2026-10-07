@@ -53,12 +53,12 @@ func parseInvite(param string) (int64, bool) {
 	return id, true
 }
 
-// notifyArmed tells the referrer that their link brought someone who set up a monitor. The
-// reward itself comes a week later, once settleReferrals has seen that the friend stayed.
+// notifyArmed tells the referrer that their link brought someone who set up a monitor, which
+// starts the trial week. The reward itself comes from settleReferrals, days later.
 func notifyArmed(invitee int64) {
 	if referrer := armReferral(invitee); referrer != 0 {
 		notifyUser(referrer, func(l Lang) string {
-			return tr(l, "inv.armed", referralWaitDays, referralRewardDays)
+			return tr(l, "inv.armed", referralWaitDays)
 		})
 	}
 }

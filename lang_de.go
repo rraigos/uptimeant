@@ -237,11 +237,14 @@ func init() {
 		"btn.paysupport":    "Support zur Zahlung",
 		"refund.done":       "⭐ Ihre Zahlung von %d Stars wurde erstattet. Der Premium-Zeitraum wurde entsprechend verkürzt.",
 		"btn.invite":        "Einladen",
-		"inv.title":         "<b>🎁 Freunde einladen</b>\nSenden Sie Ihren persönlichen Link. Sobald ein Freund einen Monitor anlegt und eine Woche später noch aktiv ist, erhalten Sie %d Tage Premium, insgesamt höchstens %d Tage.",
+		"inv.title":         "<b>🎁 Freunde einladen</b>\nSenden Sie Ihren persönlichen Link. Ihr Freund startet mit %d Tagen Premium auf unsere Kosten, und Sie erhalten eine Prämie, sobald seine Monitore %d Tage lang täglich geprüft wurden. Insgesamt höchstens %d Bonustage.",
+		"inv.tiers":         "Prämie: %d Tage, wenn ein Freund einen Monitor laufen lässt, und %d Tage, wenn er dazu einen Cron-Job oder Server anbindet.",
+		"inv.rate":          "Höchstens zwei Prämien in %d Tagen.",
+		"inv.welcome":       "🎁 <b>%d Tage Premium auf unsere Kosten</b>\nSie sind über den Link eines Freundes gekommen, daher sind die Premium-Funktionen für diese Zeit freigeschaltet.",
 		"inv.link":          "Ihr Link:\n<code>%s</code>",
 		"inv.stats":         "Freunde mit Monitor: %d   ⭐ Bonustage: %d   Bis zur Grenze: %d",
-		"inv.pending":       "Warten auf die Woche: %d",
-		"inv.armed":         "🎁 <b>Ein Freund nutzt UptimeAnt</b>\nJemand ist über Ihren Link gekommen und hat einen Monitor angelegt. Ist er in %d Tagen noch aktiv, erhalten Sie %d Tage Premium.",
-		"inv.reward":        "⭐ Ein eingeladener Freund hat eine Woche lang überwacht: %d Tage Premium. Bezahlte Einladungen gesamt: %d.",
+		"inv.pending":       "Noch ohne Prämie: %d",
+		"inv.armed":         "🎁 <b>Ein Freund ist eingerichtet</b>\nJemand ist über Ihren Link gekommen und hat einen Monitor angelegt. Werden seine Monitore %d Tage lang täglich geprüft, erhalten Sie Ihre erste Premium-Prämie.",
+		"inv.reward":        "⭐ Die Monitore Ihres Freundes wurden eine Woche lang täglich geprüft: +%d Tage Premium. Prämierte Einladungen gesamt: %d.",
 	})
 }

@@ -53,7 +53,9 @@ func langScreen(l Lang, withBack bool) screen {
 func inviteScreen(u *User) screen {
 	l := u.L()
 	invited, days := referralStats(u.ID)
-	text := tr(l, "inv.title", referralRewardDays, referralCapDays) + "\n\n" +
+	text := tr(l, "inv.title", referralWelcomeDays, referralWaitDays, referralCapDays) + "\n\n" +
+		tr(l, "inv.tiers", referralBaseDays, referralRewardDays) + " " +
+		tr(l, "inv.rate", referralWindowDays) + "\n\n" +
 		tr(l, "inv.link", esc(inviteLink(u.ID))) + "\n\n" +
 		tr(l, "inv.stats", invited, days, referralCapDays-days)
 	if pending := pendingReferrals(u.ID); pending > 0 {

@@ -508,20 +508,41 @@ func referralRows(t *testing.T, invitee int64) int {
 	return n
 }
 
-// liveSomeDays later moves an armed invite forward in time: the invitee set up their monitor
-// armedDaysAgo days ago and last opened the bot seenDaysAgo days ago.
-func liveSomeDaysLater(t *testing.T, invitee int64, armedDaysAgo, seenDaysAgo int) {
+// inviteeLives moves an armed invite forward in time: the friend set up their monitor
+// armedDaysAgo days ago, and the bot has checked it on livedDays of those days.
+func inviteeLives(t *testing.T, invitee int64, armedDaysAgo, livedDays int) {
 	t.Helper()
-	const dayMs = 86400000
-	now := nowMs()
-	if _, err := db.Exec(`UPDATE referrals SET armed_at = ? WHERE invitee = ?`,
-		now-int64(armedDaysAgo)*dayMs, invitee); err != nil {
+	armed := nowMs() - int64(armedDaysAgo)*86400000
+	if _, err := db.Exec(`UPDATE referrals SET armed_at = ? WHERE invitee = ?`, armed, invitee); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(`UPDATE users SET last_seen_at = ? WHERE id = ?`,
-		now-int64(seenDaysAgo)*dayMs, invitee); err != nil {
+	for _, id := range monitorIDs(t, invitee) {
+		for d := range livedDays {
+			day := checkDay(armed + int64(d)*86400000)
+			if _, err := db.Exec(`INSERT OR IGNORE INTO daily_stats (monitor_id, day, n, ok) VALUES (?, ?, 1, 1)`, id, day); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+}
+
+func monitorIDs(t *testing.T, userID int64) []int64 {
+	t.Helper()
+	var ids []int64
+	rows, err := db.Query(`SELECT id FROM monitors WHERE user_id = ?`, userID)
+	if err != nil {
 		t.Fatal(err)
 	}
+	for rows.Next() {
+		var id int64
+		if err = rows.Scan(&id); err != nil {
+			break
+		}
+		ids = append(ids, id)
+	}
+	rows.Close()
+	logErr("monitor ids", rows.Err())
+	return ids
 }
 
 // settle pays the due invites and delivers the messages, exactly as a scheduler tick does.
@@ -560,53 +581,69 @@ func TestInviteScreen(t *testing.T) {
 	press(1, "lg:en")
 	f.reset()
 	say(1, "/invite")
-	f.waitFor(t, "Your link:")
+	f.waitFor(t, wantText(defaultLang, "inv.tiers", referralBaseDays, referralRewardDays))
+	f.waitFor(t, wantText(defaultLang, "inv.rate", referralWindowDays))
 	f.waitFor(t, inviteLink(1))
+	f.waitFor(t, "Friends with a monitor: 0")
 	f.reset()
 	press(1, "inv")
 	f.waitFor(t, "Friends with a monitor: 0")
+	if f.count(wantText(defaultLang, "inv.pending", 1)) != 0 {
+		t.Fatalf("an invite screen with nothing pending showed the waiting line: %q", f.texts())
+	}
 }
 
-func TestReferralRewardFlow(t *testing.T) {
+func TestReferralWelcomeBonus(t *testing.T) {
 	f := setup(t)
 	say(1, "/start")
 	press(1, "lg:ru")
 
-	// the invitee arrives via the link and picks a language
+	// a newcomer follows the link and gets the trial on their own account
 	say(2, "/start "+inviteParam(1))
-	f.waitFor(t, "Select your language")
-	press(2, "lg:en")
-	if referralRows(t, 2) != 1 {
-		t.Fatal("the invite was not recorded")
+	f.waitFor(t, wantText(defaultLang, "inv.welcome", referralWelcomeDays))
+	invitee := getUser(2)
+	left := invitee.PremiumUntil - nowMs()
+	if !invitee.Premium() || left < int64(referralWelcomeDays-1)*86400000 || left > int64(referralWelcomeDays)*86400000 {
+		t.Fatalf("the invitee did not get the %d day trial: %+v", referralWelcomeDays, invitee)
 	}
 	if getUser(1).Premium() {
-		t.Fatal("an invite without a monitor must not pay")
+		t.Fatal("an invite without a monitor must not pay the inviter")
 	}
 
 	say(2, "/add_http Friend http://93.184.216.34")
 	f.waitFor(t, "Monitor added")
-	// the first monitor only starts the trial week; the inviter hears about it in their own language
-	f.waitFor(t, wantText("ru", "inv.armed", referralWaitDays, referralRewardDays))
-	if getUser(1).Premium() {
-		t.Fatal("the reward was paid before the trial week passed")
-	}
+	// the trial week starts with the first monitor, and the inviter hears about it in their own language
+	f.waitFor(t, wantText("ru", "inv.armed", referralWaitDays))
 	if n := pendingReferrals(1); n != 1 {
 		t.Fatalf("the armed invite is not pending: %d", n)
 	}
+	say(1, "/invite")
+	f.waitFor(t, wantText("ru", "inv.pending", 1))
+}
 
-	// a week later the friend still has a monitor and came back to the bot on their own
-	liveSomeDaysLater(t, 2, referralWaitDays+1, referralReturnDays)
-	if awards := settle(t); len(awards) != 1 || awards[0].Days != referralRewardDays {
+func TestReferralPaysForAWeekOfChecks(t *testing.T) {
+	f := setup(t)
+	say(1, "/start")
+	press(1, "lg:en")
+	say(2, "/start "+inviteParam(1))
+	say(2, "/add_http Friend http://93.184.216.34")
+	f.waitFor(t, "Monitor added")
+
+	inviteeLives(t, 2, referralWaitDays+1, referralWaitDays)
+	if awards := settle(t); len(awards) != 1 || awards[0].Days != referralBaseDays {
 		t.Fatalf("unexpected awards: %+v", awards)
 	}
-	f.waitFor(t, wantText("ru", "inv.reward", referralRewardDays, 1))
+	f.waitFor(t, wantText("en", "inv.reward", referralBaseDays, 1))
 	inviter := getUser(1)
 	left := inviter.PremiumUntil - nowMs()
-	if !inviter.Premium() || left < 6*86400000 || left > int64(referralRewardDays)*86400000 {
-		t.Fatalf("expected about %d days of Premium, got %d ms: %+v", referralRewardDays, left, inviter)
+	if !inviter.Premium() || left < int64(referralBaseDays-1)*86400000 || left > int64(referralBaseDays)*86400000 {
+		t.Fatalf("expected about %d days of Premium, got %d ms: %+v", referralBaseDays, left, inviter)
 	}
 	if n := pendingReferrals(1); n != 0 {
 		t.Fatalf("the settled invite is still pending: %d", n)
+	}
+	if n, days := referralStats(1); n != 1 || days != referralBaseDays {
+		t.Fatalf("unexpected stats: %d referrals, %d days", n, days)
 	}
 
 	// the same invitee's next monitor neither re-arms the invite nor pays twice
@@ -617,11 +654,36 @@ func TestReferralRewardFlow(t *testing.T) {
 	if got := getUser(1).PremiumUntil; got != before {
 		t.Fatalf("the reward was credited twice: %d instead of %d", got, before)
 	}
-	if f.count(wantText("ru", "inv.armed", referralWaitDays, referralRewardDays)) != 0 {
+	if f.count(wantText("en", "inv.armed", referralWaitDays)) != 0 {
 		t.Fatalf("a settled invite was armed again: %q", f.texts())
 	}
-	if n, days := referralStats(1); n != 1 || days != referralRewardDays {
-		t.Fatalf("unexpected stats: %d referrals, %d days", n, days)
+}
+
+func TestReferralPaysMoreForConnectedMachines(t *testing.T) {
+	f := setup(t)
+	say(1, "/start")
+	press(1, "lg:en")
+	say(2, "/start "+inviteParam(1))
+	say(2, "/add_http Friend http://93.184.216.34")
+	f.waitFor(t, "Monitor added")
+	hb := mustMonitor(t, 2, typeHeartbeat, "Backup", strings.Repeat("a", 32), 10, Meta{})
+
+	// a ping from the friend's own cron job lifts the reward to the top tier
+	inviteeLives(t, 2, referralWaitDays+1, referralWaitDays)
+	if _, err := db.Exec(`UPDATE monitors SET last_success_at = ? WHERE id = ?`, nowMs(), hb.ID); err != nil {
+		t.Fatal(err)
+	}
+	if awards := settle(t); len(awards) != 1 || awards[0].Days != referralRewardDays {
+		t.Fatalf("unexpected awards: %+v", awards)
+	}
+
+	// a week of checks without any machine of their own stays on the base tier
+	say(3, "/start "+inviteParam(1))
+	say(3, "/add_http Site http://93.184.216.35")
+	f.waitFor(t, "Monitor added")
+	inviteeLives(t, 3, referralWaitDays+1, referralWaitDays)
+	if awards := settle(t); len(awards) != 1 || awards[0].Days != referralBaseDays {
+		t.Fatalf("a silent setup paid the top tier: %+v", awards)
 	}
 }
 
@@ -634,6 +696,9 @@ func TestReferralIgnoresAbuse(t *testing.T) {
 	if referralRows(t, 2) != 0 {
 		t.Fatal("a self invite was recorded")
 	}
+	if getUser(2).Premium() {
+		t.Fatal("a rejected invite still handed out the trial")
+	}
 	say(3, "/start "+inviteParam(999)) // the referrer is not in the database
 	if referralRows(t, 3) != 0 {
 		t.Fatal("an unknown referrer was accepted")
@@ -642,52 +707,51 @@ func TestReferralIgnoresAbuse(t *testing.T) {
 	if referralRows(t, 4) != 0 {
 		t.Fatal("a forged invite was accepted")
 	}
-	// an existing user following someone else's link earns no reward
+	// an existing user following someone else's link earns no trial and no reward
 	say(1, "/start "+inviteParam(3))
 	if referralRows(t, 1) != 0 {
 		t.Fatal("an existing user was counted as invited")
 	}
 }
 
-func TestReferralRequiresARealUser(t *testing.T) {
+func TestReferralNeedsAFriendWhoStays(t *testing.T) {
 	f := setup(t)
 	say(1, "/start")
 	press(1, "lg:en")
 
-	// an account set up for the bonus: a monitor is added, nobody ever opens the bot again
 	say(2, "/start "+inviteParam(1))
 	say(2, "/add_http Google http://93.184.216.34")
 	f.waitFor(t, "Monitor added")
 
-	// the trial week passes with the invitee silent
-	liveSomeDaysLater(t, 2, referralWaitDays+1, referralWaitDays+1)
+	// the week passes, but nothing was ever checked on that monitor
+	inviteeLives(t, 2, referralWaitDays+1, 0)
 	if awards := settle(t); len(awards) != 0 {
-		t.Fatalf("an invitee who never came back paid out: %+v", awards)
-	}
-	if getUser(1).Premium() {
-		t.Fatal("the inviter got Premium for an abandoned monitor")
+		t.Fatalf("an invite with no checks paid out: %+v", awards)
 	}
 	if pendingReferrals(1) != 1 {
-		t.Fatal("the invite is still inside its grace period")
+		t.Fatal("the invite should still be inside its grace period")
 	}
 
 	// the grace period ends and the invite closes for good
-	liveSomeDaysLater(t, 2, referralExpiryDays+1, referralExpiryDays+1)
+	inviteeLives(t, 2, referralExpiryDays+1, 0)
 	if awards := settle(t); len(awards) != 0 {
 		t.Fatalf("an abandoned invite paid out after expiry: %+v", awards)
 	}
+	f.reset()
 	say(2, "/add_http Another http://93.184.216.35")
 	f.waitFor(t, "Monitor added")
 	if n := pendingReferrals(1); n != 0 {
 		t.Fatalf("a void invite became pending again: %d", n)
 	}
 
-	// a friend who came back but deleted every monitor does not pay either
+	// a friend who deletes their monitors loses the history with them, so nothing pays
 	say(3, "/start "+inviteParam(1))
 	say(3, "/add_http Site http://93.184.216.34")
 	f.waitFor(t, "Monitor added")
-	db.Exec(`DELETE FROM monitors WHERE user_id = 3`)
-	liveSomeDaysLater(t, 3, referralWaitDays+1, referralReturnDays)
+	inviteeLives(t, 3, referralWaitDays+1, referralWaitDays)
+	if _, err := db.Exec(`DELETE FROM monitors WHERE user_id = 3`); err != nil {
+		t.Fatal(err)
+	}
 	if awards := settle(t); len(awards) != 0 {
 		t.Fatalf("an invitee without monitors paid out: %+v", awards)
 	}
@@ -696,24 +760,67 @@ func TestReferralRequiresARealUser(t *testing.T) {
 	}
 }
 
-func TestReferralCap(t *testing.T) {
-	setup(t)
+func TestReferralPaceCap(t *testing.T) {
+	f := setup(t)
 	say(1, "/start")
 	press(1, "lg:en")
 
-	// 12 invitees give 84 days, the 13th adds 6 up to the cap, the 14th adds nothing
-	for i := int64(2); i <= 15; i++ {
+	for i := int64(2); i <= int64(referralPayoutsPerWindow)+2; i++ {
 		sayLang(i, "/start "+inviteParam(1), "en")
-		say(i, "/add_http site http://93.184.216.34")
-		liveSomeDaysLater(t, i, referralWaitDays+1, referralReturnDays)
+		say(i, "/add_http Site http://93.184.216.34")
+		f.waitFor(t, "Monitor added")
+		inviteeLives(t, i, referralWaitDays+1, referralWaitDays)
 	}
 	awards := settle(t)
-	if n, days := referralStats(1); days != referralCapDays || n != 14 {
-		t.Fatalf("expected the %d day cap from 14 invitees, got %d days from %d", referralCapDays, days, n)
+	if len(awards) != referralPayoutsPerWindow {
+		t.Fatalf("expected %d payouts in one window, got %+v", referralPayoutsPerWindow, awards)
 	}
-	// the 14th invitee hit the cap and brought no reward
-	if len(awards) != 13 {
-		t.Fatalf("expected 13 payouts, got %+v", awards)
+	if n := pendingReferrals(1); n != 1 {
+		t.Fatalf("the invite waiting for room in the window is not pending: %d", n)
+	}
+
+	// once the earlier payouts age out of the window the last friend is paid as well
+	if _, err := db.Exec(`UPDATE referrals SET credited_at = credited_at - ? WHERE referrer = 1 AND credited_at > 0`,
+		int64(referralWindowDays+1)*86400000); err != nil {
+		t.Fatal(err)
+	}
+	if awards := settle(t); len(awards) != 1 {
+		t.Fatalf("the window did not free up: %+v", awards)
+	}
+	if n, days := referralStats(1); n != referralPayoutsPerWindow+1 || days != n*referralBaseDays {
+		t.Fatalf("unexpected stats: %d referrals, %d days", n, days)
+	}
+}
+
+func TestReferralCap(t *testing.T) {
+	f := setup(t)
+	say(1, "/start")
+	press(1, "lg:en")
+
+	// most of the bonus budget is already spent, and that payout is old enough not to block the window
+	if _, err := db.Exec(`INSERT INTO referrals (invitee, referrer, days, credited_at)
+		VALUES (900, 1, ?, ?)`, referralCapDays-referralBaseDays, nowMs()-int64(referralWindowDays+1)*86400000); err != nil {
+		t.Fatal(err)
+	}
+
+	say(2, "/start "+inviteParam(1))
+	say(2, "/add_http Friend http://93.184.216.34")
+	f.waitFor(t, "Monitor added")
+	inviteeLives(t, 2, referralWaitDays+1, referralWaitDays)
+	if awards := settle(t); len(awards) != 1 || awards[0].Days != referralBaseDays {
+		t.Fatalf("the room left under the cap was not paid: %+v", awards)
+	}
+
+	// the cap is reached: the next friend qualifies, but there is nothing left to give
+	say(3, "/start "+inviteParam(1))
+	say(3, "/add_http Friend http://93.184.216.35")
+	f.waitFor(t, "Monitor added")
+	inviteeLives(t, 3, referralWaitDays+1, referralWaitDays)
+	if awards := settle(t); len(awards) != 0 {
+		t.Fatalf("days beyond the cap paid out: %+v", awards)
+	}
+	if n, days := referralStats(1); n != 3 || days != referralCapDays {
+		t.Fatalf("expected the %d day cap over 3 invites, got %d days from %d", referralCapDays, days, n)
 	}
 	if got := getUser(1).PremiumUntil - nowMs(); got > int64(referralCapDays)*86400000 {
 		t.Fatalf("Premium lasts longer than the cap: %d ms", got)
