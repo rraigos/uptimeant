@@ -11,6 +11,8 @@ around 7 MB of RAM at rest.
 
 [@uptimeantbot](https://t.me/uptimeantbot) · MIT · Go 1.26+
 
+<a href="https://devhunt.org/tool/uptimeant" target="_blank" title="uptimeant on DevHunt"><img src="https://devhunt.org/badge/uptimeant.svg" alt="uptimeant - Featured on DevHunt" width="220" height="54" /></a>
+
 ## What it watches
 
 | Type | Command | Behaviour |
