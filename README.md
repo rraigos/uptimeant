@@ -7,7 +7,7 @@ certificate expiry and VPS metrics, all reported into one chat. No dashboard, no
 no second app to open.
 
 Ships as one static Go binary (no cgo, no runtime), SQLite in a single file, webhook mode,
-around 15 MB of RAM at rest.
+around 7 MB of RAM at rest.
 
 [@uptimeantbot](https://t.me/uptimeantbot) · MIT · Go 1.26+
 
@@ -15,13 +15,13 @@ around 15 MB of RAM at rest.
 
 | Type | Command | Behaviour |
 | --- | --- | --- |
-| Website | `/add_http <name> <url>` | GET every 10 minutes (Premium: every minute). A final `200` counts as up: redirects are followed, only a chain that never reaches `200` is a failure. Private-network targets are refused. Alerts after two consecutive failures, with a confirmation re-check one minute after the first one. |
+| Website | `/add_http <name> <url>` | GET every 5 minutes (Premium: every minute). A final `200` counts as up: redirects are followed, only a chain that never reaches `200` is a failure. Private-network targets are refused. Alerts after two consecutive failures, with a confirmation re-check one minute after the first one. |
 | Scheduled task | `/add_heartbeat <name> <minutes>` | Your script pings `https://<host>/ping/<token>` after each successful run. No ping for `interval × 1.5` means the job broke. |
 | SSL certificate | `/add_ssl <name> <domain>` | Reads the certificate once a day (default port 443, other ports as `example.com:8443`). Warns 14 and 3 days before expiry, once per threshold; expired, untrusted or wrong-name certificates alert immediately. The counter resets after renewal. |
 | VPS metrics | `/add_agent <name> [minutes]` | The bot replies with a single install command. The agent reports CPU, RAM and disk every N minutes. Alerts when a threshold is crossed in two consecutive reports or the agent goes silent. Thresholds: `/thresholds <id> cpu=85 ram=90 disk=95` (default 90%). |
 
-SSL monitors and agents count towards the monitor limit (5 on the free plan). Heartbeat and agent
-intervals: 10 minutes and up on free, 1 minute and up on Premium.
+Every monitor type counts towards the monitor limit (10 on the free plan, 50 on Premium).
+Intervals: 5 minutes and up on free, 1 minute and up on Premium.
 
 ## Configure
 
@@ -128,11 +128,15 @@ An invite counts only if all of these hold:
 
 - the user entered the bot through the link for the first time (spamming your own old accounts earns nothing);
 - inviter and invitee are not the same account;
-- the invitee added at least one monitor.
+- the invitee added at least one monitor;
+- a week after that first monitor the invitee still has one and has opened the bot again since day
+  three — a website that keeps answering `200` for somebody who left is not retention.
 
 The inviter gets 7 days of Premium per such friend, up to 90 accumulated days (`referralRewardDays`
-and `referralCapDays` in `config.go`). Each invitee is credited exactly once, and granted days are
-appended to the current `premium_until` rather than started from today.
+and `referralCapDays` in `config.go`). The trial week is started by the invitee's first monitor and
+pays out when `settleReferrals` next runs; an invite that never qualified is closed 14 days later
+and cannot be re-armed. Each invitee is credited exactly once, and granted days are appended to the
+current `premium_until` rather than started from today.
 
 ## Payments and refunds
 

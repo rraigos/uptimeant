@@ -14,8 +14,9 @@ import (
 )
 
 var (
-	startedAt = time.Now().UnixMilli()
-	lastPrune int64
+	startedAt  = time.Now().UnixMilli()
+	lastPrune  int64
+	lastSettle int64
 
 	httpClient = &http.Client{
 		Timeout: httpTimeout,
@@ -57,6 +58,12 @@ func tick() {
 	if now-lastPrune > 3600000 {
 		lastPrune = now
 		pruneChecks(now - int64(rawHistoryDays)*86400000)
+	}
+	if now-lastSettle > 3600000 {
+		lastSettle = now
+		for _, a := range settleReferrals(now) {
+			notifyAward(a)
+		}
 	}
 }
 

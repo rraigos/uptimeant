@@ -14,8 +14,9 @@ import (
 )
 
 const (
-	freeMaxMonitors         = 5
-	freeIntervalMin         = 10
+	freeMaxMonitors         = 10
+	premiumMaxMonitors      = 50
+	freeIntervalMin         = 5
 	premiumIntervalMin      = 1
 	maxHeartbeatIntervalMin = 10080
 	maxExtraChats           = 5
@@ -51,9 +52,15 @@ const (
 	defaultThreshold = 90.0
 	minReportGap     = 10 * time.Second
 
-	// Referral program: Premium days per invite and the cap on accumulated days.
+	// Referral program: Premium days per invite and the cap on accumulated days. An invite pays
+	// out referralWaitDays after the friend's first monitor, and only if that friend came back
+	// to the bot on their own (from referralReturnDays on) and still has a monitor. Unqualified
+	// invites are dropped at referralExpiryDays.
 	referralRewardDays = 7
 	referralCapDays    = 90
+	referralWaitDays   = 7
+	referralReturnDays = 3
+	referralExpiryDays = 14
 )
 
 type Config struct {

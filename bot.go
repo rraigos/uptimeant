@@ -215,12 +215,24 @@ func (c *uctx) finishInterval(w *wizard, n int, edit bool) {
 
 // ---- monitor creation (shared by buttons and commands) ----
 
-func overLimit(u *User) bool { return !u.Premium() && countMonitors(u.ID) >= freeMaxMonitors }
+// Every plan has a ceiling: the free one to make Premium worth buying, the paid one so that a
+// single account cannot fill the check pool and slow everyone else down.
+func planMaxMonitors(u *User) int {
+	if u.Premium() {
+		return premiumMaxMonitors
+	}
+	return freeMaxMonitors
+}
+
+func overLimit(u *User) bool { return countMonitors(u.ID) >= planMaxMonitors(u) }
 
 func limitText(l Lang, u *User) string {
+	if u.Premium() {
+		return tr(l, "err.limit_premium", premiumMaxMonitors)
+	}
 	t := tr(l, "err.limit", freeMaxMonitors)
 	if paymentsEnabled() {
-		t += tr(l, "err.limit_upsell")
+		t += tr(l, "err.limit_upsell", premiumMaxMonitors)
 	}
 	return t
 }
@@ -273,7 +285,7 @@ func createHTTP(u *User, name, target string) (*Monitor, string) {
 	if err != nil {
 		return nil, saveFailed(l, "add http", err)
 	}
-	notifyReferral(u.ID)
+	notifyArmed(u.ID)
 	return p, ""
 }
 
@@ -289,7 +301,7 @@ func createHeartbeat(u *User, name string, interval int) (*Monitor, string) {
 	if err != nil {
 		return nil, saveFailed(l, "add heartbeat", err)
 	}
-	notifyReferral(u.ID)
+	notifyArmed(u.ID)
 	return p, ""
 }
 
@@ -309,7 +321,7 @@ func createSSL(u *User, name, input string) (*Monitor, string) {
 	if err != nil {
 		return nil, saveFailed(l, "add ssl", err)
 	}
-	notifyReferral(u.ID)
+	notifyArmed(u.ID)
 	return p, ""
 }
 
@@ -326,7 +338,7 @@ func createAgent(u *User, name string, interval int) (*Monitor, string) {
 	if err != nil {
 		return nil, saveFailed(l, "add agent", err)
 	}
-	notifyReferral(u.ID)
+	notifyArmed(u.ID)
 	return p, ""
 }
 

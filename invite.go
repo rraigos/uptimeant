@@ -53,25 +53,35 @@ func parseInvite(param string) (int64, bool) {
 	return id, true
 }
 
-// notifyReferral awards the referrer as soon as the invitee has added the first monitor.
-func notifyReferral(invitee int64) {
-	referrer, days, err := creditReferral(invitee)
-	if err != nil {
-		logErr("credit referral", err)
-		return
+// notifyArmed tells the referrer that their link brought someone who set up a monitor. The
+// reward itself comes a week later, once settleReferrals has seen that the friend stayed.
+func notifyArmed(invitee int64) {
+	if referrer := armReferral(invitee); referrer != 0 {
+		notifyUser(referrer, func(l Lang) string {
+			return tr(l, "inv.armed", referralWaitDays, referralRewardDays)
+		})
 	}
-	if days <= 0 {
-		return
-	}
-	u := getUser(referrer)
+}
+
+// notifyAward tells the referrer a friend stayed long enough to earn them Premium days.
+func notifyAward(a referralAward) {
+	invited, _ := referralStats(a.Referrer)
+	notifyUser(a.Referrer, func(l Lang) string {
+		return tr(l, "inv.reward", a.Days, invited)
+	})
+}
+
+// notifyUser sends a background message in the language of that user.
+func notifyUser(userID int64, build func(Lang) string) {
+	u := getUser(userID)
 	if u == nil {
 		return
 	}
-	invited, _ := referralStats(referrer)
 	l := u.L()
+	text, markup := build(l), simpleScreen("", menuRow(l)).markup()
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), sendTimeout)
 		defer cancel()
-		sendQuiet(ctx, u.ChatID, tr(l, "inv.reward", days, invited), simpleScreen("", menuRow(l)).markup())
+		sendQuiet(ctx, u.ChatID, text, markup)
 	}()
 }

@@ -46,7 +46,7 @@ var keyPrefix = map[string]string{
 	"btn.install": "💻 ", "btn.delete": "🗑 ", "btn.tolist": "📋 ", "btn.open": "🔎 ", "btn.pay": "⭐ ", "btn.chats": "💬 ",
 	"btn.change": "✏️ ", "btn.clear": "🧹 ", "btn.about_premium": "⭐ ", "btn.paysupport": "🛟 ", "btn.t.http": "🌐 ", "btn.t.hb": "💓 ",
 	"btn.t.ssl": "🔒 ", "btn.t.ag": "🖥 ",
-	"err.limit": "⚠️ ", "err.url_long": "⚠️ ", "err.addr": "⚠️ ", "err.domain": "⚠️ ", "err.interval": "⚠️ ",
+	"err.limit": "⚠️ ", "err.limit_premium": "⚠️ ", "err.url_long": "⚠️ ", "err.addr": "⚠️ ", "err.domain": "⚠️ ", "err.interval": "⚠️ ",
 	"err.save": "⚠️ ", "wiz.name_empty": "⚠️ ", "wiz.num": "⚠️ ", "thr.err": "⚠️ ", "thr.bad": "⚠️ ", "thr.range": "⚠️ ",
 }
 

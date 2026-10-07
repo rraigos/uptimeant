@@ -53,9 +53,13 @@ func langScreen(l Lang, withBack bool) screen {
 func inviteScreen(u *User) screen {
 	l := u.L()
 	invited, days := referralStats(u.ID)
-	return simpleScreen(tr(l, "inv.title", referralRewardDays, referralCapDays)+"\n\n"+
-		tr(l, "inv.link", esc(inviteLink(u.ID)))+"\n\n"+
-		tr(l, "inv.stats", invited, days, referralCapDays-days), menuRow(l))
+	text := tr(l, "inv.title", referralRewardDays, referralCapDays) + "\n\n" +
+		tr(l, "inv.link", esc(inviteLink(u.ID))) + "\n\n" +
+		tr(l, "inv.stats", invited, days, referralCapDays-days)
+	if pending := pendingReferrals(u.ID); pending > 0 {
+		text += "\n" + tr(l, "inv.pending", pending)
+	}
+	return simpleScreen(text, menuRow(l))
 }
 
 func mainScreen(u *User) screen {
@@ -259,7 +263,7 @@ func createdScreen(l Lang, p *Monitor) screen {
 
 func premiumScreen(u *User) screen {
 	l := u.L()
-	text := tr(l, "premium.text", premiumIntervalMin, freeIntervalMin, premiumIntervalMin, historyDays, premiumPriceStars, premiumDays)
+	text := tr(l, "premium.text", premiumMaxMonitors, premiumIntervalMin, freeIntervalMin, premiumIntervalMin, historyDays, premiumPriceStars, premiumDays)
 	if u.Premium() {
 		text += "\n\n" + tr(l, "premium.active", fmtDate(l, u.PremiumUntil))
 	}

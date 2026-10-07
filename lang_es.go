@@ -118,7 +118,7 @@ func init() {
 		"created.ssl":   "🔒 Certificado SSL «%s», dominio %s\nSe comprueba una vez al día; la primera comprobación se realiza en 30 segundos.\nLos avisos llegarán %d y %d días antes del vencimiento.",
 		"created.agent": "🖥 Servidor «%s»\n\nEjecute este comando en el servidor (se necesitan Linux con systemd y permisos de root).\n<code>%s</code>\n\nEl agente informa de la carga del procesador, la memoria y el disco cada %s. Los límites predeterminados son %.0f%%; puede cambiarlos en la página del monitor. Recibirá un mensaje tras %d informes seguidos por encima de un límite, o si no llega ningún informe durante %s.\n🔐 El comando contiene un token secreto, no lo comparta.",
 
-		"premium.text":        "<b>⭐ Premium</b>\nPara una supervisión que nunca duerme.\n\n✔ número ilimitado de monitores\n✔ sitios web comprobados cada %d min en lugar de cada %d\n✔ señales e informes desde %d min\n✔ alertas reenviadas a otros chats\n✔ historial y estadísticas de %d días\n\n%d Stars por %d días. Un nuevo pago amplía el periodo.",
+		"premium.text":        "<b>⭐ Premium</b>\nPara una supervisión que nunca duerme.\n\n✔ hasta %d monitores\n✔ sitios web comprobados cada %d min en lugar de cada %d\n✔ señales e informes desde %d min\n✔ alertas reenviadas a otros chats\n✔ historial y estadísticas de %d días\n\n%d Stars por %d días. Un nuevo pago amplía el periodo.",
 		"premium.active":      "✅ Activo hasta %s.",
 		"premium.unavailable": "El plan Premium no está disponible en este momento.",
 		"premium.expired":     "⭐ Su plan Premium ha terminado. Vuelven a aplicarse los límites del plan gratuito.",
@@ -158,7 +158,8 @@ func init() {
 		"iv.1440": "1 día",
 
 		"err.limit":           "Se ha alcanzado el límite del plan gratuito de %d monitores.",
-		"err.limit_upsell":    " Premium elimina el límite.",
+		"err.limit_upsell":    " Premium permite hasta %d.",
+		"err.limit_premium":   "Se alcanzó el límite de Premium de %d monitores por cuenta.",
 		"err.url_long":        "La dirección es demasiado larga.",
 		"err.addr":            "No se aceptó la dirección. %s",
 		"err.domain":          "No se aceptó el dominio. %s",
@@ -236,9 +237,11 @@ func init() {
 		"btn.paysupport":    "Soporte de pagos",
 		"refund.done":       "⭐ Se ha reembolsado su pago de %d Stars. El periodo Premium se ha reducido en consecuencia.",
 		"btn.invite":        "Invitar",
-		"inv.title":         "<b>🎁 Invitar amigos</b>\nEnvía tu enlace personal. Cuando el amigo invitado añada su primer monitor, recibes %d días de Premium, %d días como máximo en total.",
+		"inv.title":         "<b>🎁 Invitar amigos</b>\nEnvía tu enlace personal. Cuando un amigo configure un monitor y siga usando el bot una semana después, recibes %d días de Premium, %d días como máximo en total.",
 		"inv.link":          "Tu enlace:\n<code>%s</code>",
 		"inv.stats":         "Amigos con monitor: %d   ⭐ Días de bonificación: %d   Hasta el límite: %d",
-		"inv.reward":        "⭐ Un amigo invitado ha añadido su primer monitor: %d días de Premium. Invitados en total: %d.",
+		"inv.pending":       "Esperando la semana: %d",
+		"inv.armed":         "🎁 <b>Un amigo usa UptimeAnt</b>\nAlguien llegó por tu enlace y configuró un monitor. Si sigue activo en %d días, recibes %d días de Premium.",
+		"inv.reward":        "⭐ Un amigo invitado siguió vigilando sus monitores durante una semana: %d días de Premium. Invitaciones pagadas en total: %d.",
 	})
 }

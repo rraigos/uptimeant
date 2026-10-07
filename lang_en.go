@@ -118,7 +118,7 @@ func init() {
 		"created.ssl":   "🔒 SSL certificate “%s”, domain %s\nChecked once a day, the first check runs within 30 seconds.\nWarnings arrive %d and %d days before expiry.",
 		"created.agent": "🖥 Server “%s”\n\nRun this command on the server (Linux with systemd, root access required).\n<code>%s</code>\n\nThe agent reports CPU, memory and disk load every %s. Default limits are %.0f%%, you can change them on the monitor page. You will be notified after %d reports in a row over a limit, or if no report arrives for %s.\n🔐 The command contains a secret token, keep it private.",
 
-		"premium.text":        "<b>⭐ Premium</b>\nFor monitoring that never sleeps.\n\n✔ unlimited monitors\n✔ websites checked every %d min instead of %d\n✔ signals and reports from %d min\n✔ alerts forwarded to other chats\n✔ %d days of history and statistics\n\n%d Stars for %d days. Paying again extends the period.",
+		"premium.text":        "<b>⭐ Premium</b>\nFor monitoring that never sleeps.\n\n✔ up to %d monitors\n✔ websites checked every %d min instead of %d\n✔ signals and reports from %d min\n✔ alerts forwarded to other chats\n✔ %d days of history and statistics\n\n%d Stars for %d days. Paying again extends the period.",
 		"premium.active":      "✅ Active until %s.",
 		"premium.unavailable": "The Premium plan is currently unavailable.",
 		"premium.expired":     "⭐ Your Premium plan has ended. Free plan limits apply again.",
@@ -158,7 +158,8 @@ func init() {
 		"iv.1440": "1 day",
 
 		"err.limit":           "The free plan limit of %d monitors has been reached.",
-		"err.limit_upsell":    " Premium removes the limit.",
+		"err.limit_upsell":    " Premium allows up to %d.",
+		"err.limit_premium":   "The Premium limit of %d monitors per account has been reached.",
 		"err.url_long":        "The address is too long.",
 		"err.addr":            "The address was not accepted. %s",
 		"err.domain":          "The domain was not accepted. %s",
@@ -236,9 +237,11 @@ func init() {
 		"btn.paysupport":    "Payment support",
 		"refund.done":       "⭐ Your payment of %d Stars has been refunded. The Premium period was shortened accordingly.",
 		"btn.invite":        "Invite",
-		"inv.title":         "<b>🎁 Invite friends</b>\nSend your personal link. When the friend you invited adds their first monitor, you get %d days of Premium, %d days at most in total.",
+		"inv.title":         "<b>🎁 Invite friends</b>\nSend your personal link. When a friend sets up a monitor and is still using the bot a week later, you get %d days of Premium, %d days at most in total.",
 		"inv.link":          "Your link:\n<code>%s</code>",
 		"inv.stats":         "Friends with a monitor: %d   ⭐ Bonus days: %d   Left to the limit: %d",
-		"inv.reward":        "⭐ A friend you invited added their first monitor: %d days of Premium. Invited in total: %d.",
+		"inv.pending":       "Waiting for the week to pass: %d",
+		"inv.armed":         "🎁 <b>A friend is using UptimeAnt</b>\nSomeone came through your link and set up a monitor. If they are still active in %d days, you get %d days of Premium.",
+		"inv.reward":        "⭐ A friend you invited kept watching their monitors for a week: %d days of Premium. Paid invites in total: %d.",
 	})
 }

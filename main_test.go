@@ -164,6 +164,11 @@ func mustMonitor(t *testing.T, uid int64, typ, name, target string, interval int
 	return p
 }
 
+// wantText formats a catalog entry the way a user reads it.
+func wantText(l Lang, key string, args ...any) string {
+	return fmt.Sprintf(catalog[l][key], args...)
+}
+
 // ---- translation catalog ----
 
 var verbRe = regexp.MustCompile(`%[-+# 0-9.]*[a-zA-Z]`)
@@ -358,7 +363,7 @@ func TestWizardsCreateMonitors(t *testing.T) {
 	press(1, "new:hb")
 	say(1, "Backup")
 	f.waitFor(t, "Signal interval")
-	say(1, "5")
+	say(1, "3")
 	f.waitFor(t, "Invalid interval")
 	press(1, "iv:60")
 	f.waitFor(t, "Cron example")
@@ -438,10 +443,16 @@ func TestCommandsAndLimits(t *testing.T) {
 		t.Fatalf("expected 4 monitors, got %d", n)
 	}
 	say(1, "/add_agent Fifth 10")
+	for n := countMonitors(1); n < freeMaxMonitors; n++ {
+		say(1, "/add_http spare http://93.184.216.34")
+	}
 	say(1, "/add_agent Sixth 10")
-	f.waitFor(t, "The free plan limit of 5 monitors has been reached.")
-	if f.count("Premium removes the limit.") != 1 {
+	f.waitFor(t, wantText(defaultLang, "err.limit", freeMaxMonitors))
+	if f.count(wantText(defaultLang, "err.limit_upsell", premiumMaxMonitors)) != 1 {
 		t.Fatal("the limit message should offer Premium when payments are enabled")
+	}
+	if n := countMonitors(1); n != freeMaxMonitors {
+		t.Fatalf("the free plan cap was not enforced: %d monitors", n)
 	}
 	if f.count("install.sh | sudo sh -s -- ") != 2 {
 		t.Fatalf("expected 2 agent install commands: %q", f.texts())
@@ -467,6 +478,25 @@ func TestCommandsAndLimits(t *testing.T) {
 	f.waitFor(t, "Delete “")
 }
 
+func TestPremiumMonitorCap(t *testing.T) {
+	f := setup(t)
+	say(1, "/start")
+	press(1, "lg:en")
+	db.Exec(`UPDATE users SET premium_until = ? WHERE id = 1`, nowMs()+int64(premiumDays)*86400000)
+
+	for n := countMonitors(1); n < premiumMaxMonitors; n++ {
+		mustMonitor(t, 1, typeHTTP, "site", "http://93.184.216.34", premiumIntervalMin, Meta{})
+	}
+	say(1, "/add_http Extra http://93.184.216.35")
+	f.waitFor(t, wantText(defaultLang, "err.limit_premium", premiumMaxMonitors))
+	if f.count(wantText(defaultLang, "err.limit", freeMaxMonitors)) != 0 {
+		t.Fatalf("a Premium user was shown the free plan message: %q", f.texts())
+	}
+	if n := countMonitors(1); n != premiumMaxMonitors {
+		t.Fatalf("the Premium cap was not enforced: %d monitors", n)
+	}
+}
+
 // ---- referral program ----
 
 func referralRows(t *testing.T, invitee int64) int {
@@ -476,6 +506,32 @@ func referralRows(t *testing.T, invitee int64) int {
 		t.Fatal(err)
 	}
 	return n
+}
+
+// liveSomeDays later moves an armed invite forward in time: the invitee set up their monitor
+// armedDaysAgo days ago and last opened the bot seenDaysAgo days ago.
+func liveSomeDaysLater(t *testing.T, invitee int64, armedDaysAgo, seenDaysAgo int) {
+	t.Helper()
+	const dayMs = 86400000
+	now := nowMs()
+	if _, err := db.Exec(`UPDATE referrals SET armed_at = ? WHERE invitee = ?`,
+		now-int64(armedDaysAgo)*dayMs, invitee); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`UPDATE users SET last_seen_at = ? WHERE id = ?`,
+		now-int64(seenDaysAgo)*dayMs, invitee); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// settle pays the due invites and delivers the messages, exactly as a scheduler tick does.
+func settle(t *testing.T) []referralAward {
+	t.Helper()
+	awards := settleReferrals(nowMs())
+	for _, a := range awards {
+		notifyAward(a)
+	}
+	return awards
 }
 
 func TestInviteLinkIsSignedAndStable(t *testing.T) {
@@ -529,20 +585,40 @@ func TestReferralRewardFlow(t *testing.T) {
 
 	say(2, "/add_http Friend http://93.184.216.34")
 	f.waitFor(t, "Monitor added")
-	// the reward reaches the inviter in the inviter's own language
-	f.waitFor(t, "Приглашённый вами друг добавил первый монитор: 7 дней Premium")
+	// the first monitor only starts the trial week; the inviter hears about it in their own language
+	f.waitFor(t, wantText("ru", "inv.armed", referralWaitDays, referralRewardDays))
+	if getUser(1).Premium() {
+		t.Fatal("the reward was paid before the trial week passed")
+	}
+	if n := pendingReferrals(1); n != 1 {
+		t.Fatalf("the armed invite is not pending: %d", n)
+	}
+
+	// a week later the friend still has a monitor and came back to the bot on their own
+	liveSomeDaysLater(t, 2, referralWaitDays+1, referralReturnDays)
+	if awards := settle(t); len(awards) != 1 || awards[0].Days != referralRewardDays {
+		t.Fatalf("unexpected awards: %+v", awards)
+	}
+	f.waitFor(t, wantText("ru", "inv.reward", referralRewardDays, 1))
 	inviter := getUser(1)
 	left := inviter.PremiumUntil - nowMs()
 	if !inviter.Premium() || left < 6*86400000 || left > int64(referralRewardDays)*86400000 {
 		t.Fatalf("expected about %d days of Premium, got %d ms: %+v", referralRewardDays, left, inviter)
 	}
+	if n := pendingReferrals(1); n != 0 {
+		t.Fatalf("the settled invite is still pending: %d", n)
+	}
 
-	// the same invitee's next monitor does not credit a second time
+	// the same invitee's next monitor neither re-arms the invite nor pays twice
 	before := inviter.PremiumUntil
+	f.reset()
 	say(2, "/add_http Second http://93.184.216.35")
 	f.waitFor(t, "Monitor added")
 	if got := getUser(1).PremiumUntil; got != before {
 		t.Fatalf("the reward was credited twice: %d instead of %d", got, before)
+	}
+	if f.count(wantText("ru", "inv.armed", referralWaitDays, referralRewardDays)) != 0 {
+		t.Fatalf("a settled invite was armed again: %q", f.texts())
 	}
 	if n, days := referralStats(1); n != 1 || days != referralRewardDays {
 		t.Fatalf("unexpected stats: %d referrals, %d days", n, days)
@@ -573,8 +649,55 @@ func TestReferralIgnoresAbuse(t *testing.T) {
 	}
 }
 
-func TestReferralCap(t *testing.T) {
+func TestReferralRequiresARealUser(t *testing.T) {
 	f := setup(t)
+	say(1, "/start")
+	press(1, "lg:en")
+
+	// an account set up for the bonus: a monitor is added, nobody ever opens the bot again
+	say(2, "/start "+inviteParam(1))
+	say(2, "/add_http Google http://93.184.216.34")
+	f.waitFor(t, "Monitor added")
+
+	// the trial week passes with the invitee silent
+	liveSomeDaysLater(t, 2, referralWaitDays+1, referralWaitDays+1)
+	if awards := settle(t); len(awards) != 0 {
+		t.Fatalf("an invitee who never came back paid out: %+v", awards)
+	}
+	if getUser(1).Premium() {
+		t.Fatal("the inviter got Premium for an abandoned monitor")
+	}
+	if pendingReferrals(1) != 1 {
+		t.Fatal("the invite is still inside its grace period")
+	}
+
+	// the grace period ends and the invite closes for good
+	liveSomeDaysLater(t, 2, referralExpiryDays+1, referralExpiryDays+1)
+	if awards := settle(t); len(awards) != 0 {
+		t.Fatalf("an abandoned invite paid out after expiry: %+v", awards)
+	}
+	say(2, "/add_http Another http://93.184.216.35")
+	f.waitFor(t, "Monitor added")
+	if n := pendingReferrals(1); n != 0 {
+		t.Fatalf("a void invite became pending again: %d", n)
+	}
+
+	// a friend who came back but deleted every monitor does not pay either
+	say(3, "/start "+inviteParam(1))
+	say(3, "/add_http Site http://93.184.216.34")
+	f.waitFor(t, "Monitor added")
+	db.Exec(`DELETE FROM monitors WHERE user_id = 3`)
+	liveSomeDaysLater(t, 3, referralWaitDays+1, referralReturnDays)
+	if awards := settle(t); len(awards) != 0 {
+		t.Fatalf("an invitee without monitors paid out: %+v", awards)
+	}
+	if n, days := referralStats(1); n != 0 || days != 0 {
+		t.Fatalf("abandoned invites reached the stats: %d referrals, %d days", n, days)
+	}
+}
+
+func TestReferralCap(t *testing.T) {
+	setup(t)
 	say(1, "/start")
 	press(1, "lg:en")
 
@@ -582,13 +705,16 @@ func TestReferralCap(t *testing.T) {
 	for i := int64(2); i <= 15; i++ {
 		sayLang(i, "/start "+inviteParam(1), "en")
 		say(i, "/add_http site http://93.184.216.34")
+		liveSomeDaysLater(t, i, referralWaitDays+1, referralReturnDays)
 	}
-	n, days := referralStats(1)
-	if days != referralCapDays {
-		t.Fatalf("expected the %d day cap, got %d days from %d referrals", referralCapDays, days, n)
+	awards := settle(t)
+	if n, days := referralStats(1); days != referralCapDays || n != 14 {
+		t.Fatalf("expected the %d day cap from 14 invitees, got %d days from %d", referralCapDays, days, n)
 	}
-	// 13 payouts happened, the 14th invitee hit the cap and brought no reward
-	f.waitCount(t, "days of Premium", 13)
+	// the 14th invitee hit the cap and brought no reward
+	if len(awards) != 13 {
+		t.Fatalf("expected 13 payouts, got %+v", awards)
+	}
 	if got := getUser(1).PremiumUntil - nowMs(); got > int64(referralCapDays)*86400000 {
 		t.Fatalf("Premium lasts longer than the cap: %d ms", got)
 	}
@@ -852,11 +978,11 @@ func TestPaymentsDisabledWithoutSupportContact(t *testing.T) {
 	f.waitFor(t, "UptimeAnt")
 	press(1, "prem")
 	f.waitCount(t, "currently unavailable", 2)
-	for range 5 {
+	for range freeMaxMonitors {
 		say(1, "/add_heartbeat Task 60")
 	}
 	say(1, "/add_heartbeat Extra 60")
-	f.waitFor(t, "The free plan limit of 5 monitors has been reached.")
+	f.waitFor(t, wantText(defaultLang, "err.limit", freeMaxMonitors))
 	if f.count("subscribe to Premium") != 0 {
 		t.Fatalf("Premium must not be promoted while payments are disabled: %q", f.texts())
 	}
