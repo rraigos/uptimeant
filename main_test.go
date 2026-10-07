@@ -1410,3 +1410,31 @@ func TestPausedMonitorsOnPremiumExpiry(t *testing.T) {
 	}
 }
 
+func TestAdminStats(t *testing.T) {
+	f := setup(t)
+	cfg.AdminIDs = map[int64]bool{99: true}
+	upsertUser(1, "ru")
+	upsertUser(99, "ru")
+	_, _ = addMonitor(1, typeHTTP, "Site", "https://example.com", 5, Meta{})
+
+	say := func(id int64, text string) {
+		c := &uctx{ctx: context.Background(), userID: id, chatID: id, user: getUser(id)}
+		cmd, arg, _ := parseCommand(text)
+		c.arg = arg
+		commands[cmd](c)
+	}
+
+	say(1, "/stats") // Ordinary user gets no response
+	time.Sleep(50 * time.Millisecond)
+	if f.count("Total users") != 0 {
+		t.Fatal("ordinary users must not get /stats response")
+	}
+
+	say(99, "/stats")
+	f.waitFor(t, "Total users")
+	if f.count("Total monitors") == 0 {
+		t.Fatal("admin must get stats output")
+	}
+}
+
+

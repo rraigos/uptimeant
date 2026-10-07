@@ -373,6 +373,7 @@ func init() {
 		"paysupport":    cmdPaySupport,
 		"payments":      cmdPayments,
 		"refund":        cmdRefund,
+		"stats":         cmdStats,
 	}
 }
 
@@ -700,6 +701,21 @@ func cmdPayments(c *uctx) {
 	}
 	lines = append(lines, "Refund with /refund charge_id")
 	c.text(strings.Join(lines, "\n\n"))
+}
+
+func cmdStats(c *uctx) {
+	if !isAdmin(c.userID) {
+		return
+	}
+	st := getAppStats()
+	msg := fmt.Sprintf("<b>📊 Stats UptimeAnt</b>\n\n"+
+		"👥 <b>Total users:</b> %d\n"+
+		"🎯 <b>Active users (with monitors):</b> %d\n"+
+		"📡 <b>Total monitors:</b> %d\n"+
+		"⭐ <b>Premium users:</b> %d\n"+
+		"💳 <b>Successful payments:</b> %d (%d Stars)",
+		st.TotalUsers, st.ActiveUsers, st.TotalMonitors, st.PremiumUsers, st.TotalPayments, st.TotalStars)
+	c.text(msg)
 }
 
 func cmdRefund(c *uctx) {

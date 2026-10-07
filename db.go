@@ -474,6 +474,25 @@ func expirePremiums(now int64) []User {
 	return users
 }
 
+type AppStats struct {
+	TotalUsers    int
+	ActiveUsers   int
+	TotalMonitors int
+	PremiumUsers  int
+	TotalPayments int
+	TotalStars    int
+}
+
+func getAppStats() AppStats {
+	var s AppStats
+	logErr("stats users", db.QueryRow(`SELECT COUNT(*) FROM users`).Scan(&s.TotalUsers))
+	logErr("stats active users", db.QueryRow(`SELECT COUNT(DISTINCT user_id) FROM monitors`).Scan(&s.ActiveUsers))
+	logErr("stats monitors", db.QueryRow(`SELECT COUNT(*) FROM monitors`).Scan(&s.TotalMonitors))
+	logErr("stats premium", db.QueryRow(`SELECT COUNT(*) FROM users WHERE is_premium = 1 AND premium_until > ?`, nowMs()).Scan(&s.PremiumUsers))
+	logErr("stats payments", db.QueryRow(`SELECT COUNT(*), COALESCE(SUM(stars), 0) FROM payments WHERE refunded_at = 0`).Scan(&s.TotalPayments, &s.TotalStars))
+	return s
+}
+
 type Payment struct {
 	ChargeID   string
 	UserID     int64
