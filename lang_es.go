@@ -74,6 +74,7 @@ func init() {
 		"st.up":      "Funciona",
 		"st.down":    "Con fallo",
 		"st.unknown": "Pendiente de la primera comprobación",
+		"st.paused":  "Pausado (Límite Free)",
 
 		"type.http":      "🌐 Sitio web (HTTP)",
 		"type.heartbeat": "💓 Tarea programada",
@@ -246,5 +247,9 @@ func init() {
 		"inv.pending":       "Sin recompensa todavía: %d",
 		"inv.armed":         "🎁 <b>Un amigo ya está listo</b>\nAlguien llegó por tu enlace y añadió un monitor. Cuando sus monitores se comprueben a diario durante %d días, recibirás tu primera recompensa Premium.",
 		"inv.reward":        "⭐ Los monitores de tu amigo se han comprobado a diario durante una semana: +%d días de Premium. Invitaciones recompensadas en total: %d.",
+		"card.paused_note":  "⏸️ <b>Monitor pausado</b>\nEl plan gratuito incluye 10 monitores. Tu Premium ha caducado, por lo que las comprobaciones están pausadas.",
+		"btn.buy_premium":   "⭐️ Obtener Premium",
+		"premium.warn_24h":  "⚠️ <b>¡Tu Premium vence en 24 horas!</b>\nTras vencer, los monitores a partir del #11 se pausarán automáticamente.",
+		"premium.expired_paused": "⚠️ <b>Tu Premium ha caducado</b>\nTus primeros 10 monitores siguen funcionando, pero los monitores a partir del #11 se han pausado. Renueva Premium para reactivarlos.",
 	})
 }

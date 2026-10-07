@@ -74,6 +74,7 @@ func init() {
 		"st.up":      "Working",
 		"st.down":    "Failing",
 		"st.unknown": "Waiting for the first check",
+		"st.paused":  "Paused (Free limit)",
 
 		"type.http":      "🌐 Website (HTTP)",
 		"type.heartbeat": "💓 Scheduled task",
@@ -246,5 +247,9 @@ func init() {
 		"inv.pending":       "Not yet rewarded: %d",
 		"inv.armed":         "🎁 <b>A friend is set up</b>\nSomeone came through your link and added a monitor. Once their monitors have been checked every day for %d days, you get your first Premium reward.",
 		"inv.reward":        "⭐ Your friend's monitors have been checked every day for a week: +%d days of Premium. Rewarded invites in total: %d.",
+		"card.paused_note":  "⏸️ <b>Monitor paused</b>\nThe free plan includes 10 monitors. Your Premium expired, so checks for this monitor are paused until renewed.",
+		"btn.buy_premium":   "⭐️ Get Premium",
+		"premium.warn_24h":  "⚠️ <b>Your Premium expires in 24 hours!</b>\nAfter expiry, monitors #11 and above will be automatically paused.",
+		"premium.expired_paused": "⚠️ <b>Your Premium has expired</b>\nYour first 10 monitors continue working, while monitors #11 and above have been paused. Renew Premium to resume all monitors.",
 	})
 }

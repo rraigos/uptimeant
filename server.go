@@ -67,6 +67,10 @@ func newServer(webhook http.Handler, baseURL, secret string) *http.ServeMux {
 			http.Error(w, "unknown token", http.StatusNotFound)
 			return
 		}
+		if !isMonitorActive(p) {
+			http.Error(w, "Premium expired: monitor paused", http.StatusPaymentRequired)
+			return
+		}
 		handleSuccess(p, det("d.ping"))
 		fmt.Fprint(w, "OK")
 	})
@@ -115,6 +119,10 @@ func handleAgentReport(w http.ResponseWriter, r *http.Request) {
 	}
 	if p == nil {
 		http.Error(w, "unknown token", http.StatusUnauthorized)
+		return
+	}
+	if !isMonitorActive(p) {
+		http.Error(w, "Premium expired: monitor paused", http.StatusPaymentRequired)
 		return
 	}
 	var rep agentReport

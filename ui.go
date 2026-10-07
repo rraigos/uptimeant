@@ -128,7 +128,11 @@ func listScreen(u *User) screen {
 			text += "\n" + tr(l, "list.more", maxListButtons, len(monitors))
 			break
 		}
-		rows = append(rows, line(btn(statusDot[p.Status]+" "+truncRunes(p.Name, 40), fmt.Sprintf("p:%d", p.ID))))
+		dot := statusDot[p.Status]
+		if !isMonitorActive(p) {
+			dot = "⏸️"
+		}
+		rows = append(rows, line(btn(dot+" "+truncRunes(p.Name, 40), fmt.Sprintf("p:%d", p.ID))))
 	}
 	rows = append(rows, line(ib(l, "btn.add", "add"), ib(l, "btn.menu", "m")))
 	return screen{text: text, rows: rows}
@@ -140,10 +144,20 @@ func label(l Lang, key, value string) string { return tr(l, key) + " " + value }
 
 func cardScreen(u *User, p *Monitor) screen {
 	l := u.L()
+	active := isMonitorActive(p)
+	dot := statusDot[p.Status]
+	stText := tr(l, "st."+p.Status)
+	if !active {
+		dot = "⏸️"
+		stText = tr(l, "st.paused")
+	}
 	lines := []string{
-		statusDot[p.Status] + " <b>" + esc(p.Name) + "</b>",
-		tr(l, "card.sub", tr(l, "st."+p.Status), tr(l, "type."+p.Type), p.ID),
+		dot + " <b>" + esc(p.Name) + "</b>",
+		tr(l, "card.sub", stText, tr(l, "type."+p.Type), p.ID),
 		"",
+	}
+	if !active {
+		lines = append(lines, tr(l, "card.paused_note"), "")
 	}
 	var extra [][]models.InlineKeyboardButton
 	switch p.Type {
@@ -177,6 +191,9 @@ func cardScreen(u *User, p *Monitor) screen {
 	}
 
 	rows := [][]models.InlineKeyboardButton{line(ib(l, "btn.refresh", fmt.Sprintf("p:%d", p.ID)), ib(l, "btn.history", fmt.Sprintf("hist:%d", p.ID)))}
+	if !active && paymentsEnabled() {
+		rows = append([][]models.InlineKeyboardButton{line(ib(l, "btn.buy_premium", "prem"))}, rows...)
+	}
 	rows = append(rows, extra...)
 	rows = append(rows, line(ib(l, "btn.delete", fmt.Sprintf("del:%d", p.ID)), ib(l, "btn.tolist", "l")))
 	return screen{text: strings.Join(lines, "\n"), rows: rows}

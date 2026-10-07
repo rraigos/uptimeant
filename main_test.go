@@ -1357,3 +1357,56 @@ func TestMigrationAddsRefundColumn(t *testing.T) {
 		t.Fatalf("an old payment must stay refundable: %+v", p)
 	}
 }
+
+func TestPausedMonitorsOnPremiumExpiry(t *testing.T) {
+	_ = setup(t)
+	upsertUser(1, "ru")
+	now := nowMs()
+	// Give user Premium
+	_, err := db.Exec(`UPDATE users SET is_premium = 1, premium_until = ? WHERE id = 1`, now+3600*1000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Add 12 monitors
+	var monitors []*Monitor
+	for i := 1; i <= 12; i++ {
+		m, err := addMonitor(1, typeHTTP, fmt.Sprintf("Site %d", i), fmt.Sprintf("https://example.com/%d", i), 5, Meta{})
+		if err != nil {
+			t.Fatalf("failed to add monitor: %v", err)
+		}
+		monitors = append(monitors, m)
+	}
+	// While Premium is active, all 12 monitors are active
+	for _, m := range monitors {
+		if !isMonitorActive(m) {
+			t.Fatalf("monitor %d should be active while user has Premium", m.ID)
+		}
+	}
+	// Expire Premium
+	_, err = db.Exec(`UPDATE users SET is_premium = 0, premium_until = 0 WHERE id = 1`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Now first 10 monitors are active, 11 and 12 are paused
+	for i, m := range monitors {
+		active := isMonitorActive(m)
+		if i < 10 && !active {
+			t.Fatalf("first 10 monitors should remain active, monitor %d is inactive", m.ID)
+		}
+		if i >= 10 && active {
+			t.Fatalf("monitors beyond 10 should be paused when Premium expires, monitor %d is active", m.ID)
+		}
+	}
+	// Re-activate Premium
+	_, err = db.Exec(`UPDATE users SET is_premium = 1, premium_until = ? WHERE id = 1`, now+3600*1000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// All monitors become active again
+	for _, m := range monitors {
+		if !isMonitorActive(m) {
+			t.Fatalf("monitor %d should automatically reactivate when Premium is renewed", m.ID)
+		}
+	}
+}
+

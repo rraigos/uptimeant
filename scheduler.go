@@ -51,6 +51,7 @@ func tick() {
 		}
 	}()
 	now := nowMs()
+	notify24hExpiringPremiums(now)
 	notifyExpiredPremiums(now)
 	checkSilent(now)
 	checkDueHTTP(now)
@@ -67,13 +68,28 @@ func tick() {
 	}
 }
 
-func notifyExpiredPremiums(now int64) {
-	for _, u := range expirePremiums(now) {
+func notify24hExpiringPremiums(now int64) {
+	for _, u := range warn24hPremiums(now) {
 		l := getUser(u.ID).L()
 		go func() {
 			ctx, cancel := context.WithTimeout(context.Background(), sendTimeout)
 			defer cancel()
-			sendQuiet(ctx, u.ChatID, tr(l, "premium.expired"), simpleScreen("", menuRow(l)).markup())
+			sendQuiet(ctx, u.ChatID, tr(l, "premium.warn_24h"), simpleScreen("", menuRow(l)).markup())
+		}()
+	}
+}
+
+func notifyExpiredPremiums(now int64) {
+	for _, u := range expirePremiums(now) {
+		l := getUser(u.ID).L()
+		msgKey := "premium.expired"
+		if countMonitors(u.ID) > freeMaxMonitors {
+			msgKey = "premium.expired_paused"
+		}
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), sendTimeout)
+			defer cancel()
+			sendQuiet(ctx, u.ChatID, tr(l, msgKey), simpleScreen("", menuRow(l)).markup())
 		}()
 	}
 }
@@ -121,6 +137,9 @@ func httpEvery(p *Monitor, now int64) time.Duration {
 func checkDueHTTP(now int64) {
 	var due []*Monitor
 	for _, p := range monitorsByType(typeHTTP) {
+		if !isMonitorActive(p) {
+			continue
+		}
 		if p.LastCheckAt == 0 || time.Duration(now-p.LastCheckAt)*time.Millisecond >= httpEvery(p, now)-time.Second {
 			due = append(due, p)
 		}
@@ -203,6 +222,9 @@ func checkHTTP(target string) (bool, string) {
 
 func checkSilent(now int64) {
 	for _, p := range silentCandidates() {
+		if !isMonitorActive(p) {
+			continue
+		}
 		last := p.LastSuccessAt
 		if last == 0 {
 			last = p.CreatedAt
@@ -236,6 +258,9 @@ func sslEvery(p *Monitor) time.Duration {
 func checkDueSSL(now int64) {
 	var due []*Monitor
 	for _, p := range monitorsByType(typeSSL) {
+		if !isMonitorActive(p) {
+			continue
+		}
 		if p.LastCheckAt == 0 || time.Duration(now-p.LastCheckAt)*time.Millisecond >= sslEvery(p)-time.Second {
 			due = append(due, p)
 		}

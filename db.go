@@ -81,6 +81,7 @@ type User struct {
 	PremiumUntil int64
 	ExtraChats   string
 	Lang         string
+	Warned24h    bool
 }
 
 func (u *User) Premium() bool { return u != nil && u.PremiumUntil > nowMs() }
@@ -153,6 +154,7 @@ func openDB(path string) error {
 		`ALTER TABLE payments ADD COLUMN refunded_at INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE referrals ADD COLUMN armed_at INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE referrals ADD COLUMN welcome_at INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE users ADD COLUMN warned_24h INTEGER NOT NULL DEFAULT 0`,
 	} {
 		if _, aerr := db.Exec(stmt); aerr != nil && !strings.Contains(aerr.Error(), "duplicate column") {
 			return aerr
@@ -242,8 +244,9 @@ func upsertUser(id int64, lang string) bool {
 func getUser(id int64) *User {
 	u := &User{}
 	var until sql.NullInt64
-	err := db.QueryRow(`SELECT id, chat_id, premium_until, extra_alert_chat_ids, lang FROM users WHERE id = ?`, id).
-		Scan(&u.ID, &u.ChatID, &until, &u.ExtraChats, &u.Lang)
+	var warned sql.NullInt64
+	err := db.QueryRow(`SELECT id, chat_id, premium_until, extra_alert_chat_ids, lang, warned_24h FROM users WHERE id = ?`, id).
+		Scan(&u.ID, &u.ChatID, &until, &u.ExtraChats, &u.Lang, &warned)
 	if err != nil {
 		if !errors.Is(err, sql.ErrNoRows) {
 			logErr("get user", err)
@@ -251,6 +254,7 @@ func getUser(id int64) *User {
 		return nil
 	}
 	u.PremiumUntil = until.Int64
+	u.Warned24h = warned.Int64 == 1
 	return u
 }
 
@@ -407,6 +411,48 @@ func pruneChecks(before int64) {
 	logErr("prune checks", err)
 }
 
+func isMonitorActive(p *Monitor) bool {
+	if p == nil {
+		return false
+	}
+	u := getUser(p.UserID)
+	if u == nil {
+		return false
+	}
+	if u.Premium() {
+		return true
+	}
+	mons := listMonitors(p.UserID)
+	for i, m := range mons {
+		if m.ID == p.ID {
+			return i < freeMaxMonitors
+		}
+	}
+	return false
+}
+
+func warn24hPremiums(now int64) []User {
+	target := now + 24*3600*1000
+	rows, err := db.Query(`SELECT id, chat_id FROM users WHERE is_premium = 1 AND premium_until > ? AND premium_until <= ? AND warned_24h = 0`, now, target)
+	if err != nil {
+		logErr("warn 24h users", err)
+		return nil
+	}
+	var users []User
+	for rows.Next() {
+		var u User
+		if rows.Scan(&u.ID, &u.ChatID) == nil {
+			users = append(users, u)
+		}
+	}
+	rows.Close()
+	for _, u := range users {
+		_, err := db.Exec(`UPDATE users SET warned_24h = 1 WHERE id = ?`, u.ID)
+		logErr("set warned 24h", err)
+	}
+	return users
+}
+
 func expirePremiums(now int64) []User {
 	rows, err := db.Query(`SELECT id, chat_id FROM users WHERE is_premium = 1 AND premium_until < ?`, now)
 	if err != nil {
@@ -524,7 +570,7 @@ func recordPayment(chargeID string, userID int64, stars int) (int64, error) {
 		return 0, err
 	}
 	until := max(now, cur.Int64) + int64(premiumDays)*86400000
-	if _, err := tx.Exec(`UPDATE users SET is_premium = 1, premium_until = ? WHERE id = ?`, until, userID); err != nil {
+	if _, err := tx.Exec(`UPDATE users SET is_premium = 1, premium_until = ?, warned_24h = 0 WHERE id = ?`, until, userID); err != nil {
 		return 0, err
 	}
 	return until, tx.Commit()
@@ -558,7 +604,7 @@ func acceptInvite(invitee, referrer int64) bool {
 		return false
 	}
 	until := max(now, cur.Int64) + int64(referralWelcomeDays)*86400000
-	if _, err = tx.Exec(`UPDATE users SET is_premium = 1, premium_until = ? WHERE id = ?`, until, invitee); err != nil {
+	if _, err = tx.Exec(`UPDATE users SET is_premium = 1, premium_until = ?, warned_24h = 0 WHERE id = ?`, until, invitee); err != nil {
 		logErr("welcome bonus", err)
 		return false
 	}
@@ -726,7 +772,7 @@ func creditInvite(invitee int64, want int, now int64) (int64, int, error) {
 		return 0, 0, err
 	}
 	until := max(now, cur.Int64) + int64(days)*86400000
-	if _, err := tx.Exec(`UPDATE users SET is_premium = 1, premium_until = ? WHERE id = ?`, until, referrer); err != nil {
+	if _, err := tx.Exec(`UPDATE users SET is_premium = 1, premium_until = ?, warned_24h = 0 WHERE id = ?`, until, referrer); err != nil {
 		return 0, 0, err
 	}
 	return referrer, days, tx.Commit()
